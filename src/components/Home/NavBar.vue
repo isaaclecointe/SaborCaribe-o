@@ -46,16 +46,19 @@ header {
   gap: 24px;            /* ← espacio entre items */
   margin: 0;
   padding: 0;
+  
 }
 
 .Menu {
   color: rgb(207, 0, 86);
   cursor: pointer;
+  font-size: 30px;
 }
 
 .acerca {
   color: rgb(178, 238, 39);
   cursor: pointer;
+  font-size: 30px;
 }
 
 /* Tablet */

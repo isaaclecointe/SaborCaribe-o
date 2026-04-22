@@ -1,14 +1,28 @@
 <template>
   <NavBar />
-<div class="foto-container">
-  <picture>
-    <source media="(max-width: 480px)" :srcset="mobileImg">
-    <img :src="desktopImg" alt="imagen" class="foto-negocio">
-  </picture>
-</div>
+  <div class="foto-container">
+    <picture>
+      <source media="(max-width: 480px)" :srcset="mobileImg">
+      <img :src="desktopImg" alt="imagen" class="foto-negocio">
+    </picture>
+  </div>
 
-  <div>
-    <p>hola</p>
+  <div class="historia">
+   <div class="historia-contenido">  <!-- ✅ Adentro del div.historia y bien cerrado -->
+     <div class="video-contenedor"> 
+        <video autoplay loop muted playsinline>
+          <source src="/src/assets/videoTortilla.mp4" type="video/mp4" />
+        </video>
+        <h1 class="a-mano">HECHAS A MANO!! 🔥</h1>
+      </div>
+
+   
+      <p class="info">“Nuestras tortillas de harina son ese gusto que acompaña momentos especiales, 
+                       antojos y reuniones donde la comida se disfruta sin prisa. 
+                       Elaboradas a mano con ingredientes frescos, cada una conserva un sabor 
+                       auténtico que refleja dedicación, tradición y el placer de lo bien hecho.”</p>
+
+    </div>
   </div>
 </template>
 
@@ -56,6 +70,51 @@ export default {
   display: block;
 }
 
+.historia {
+  width: 100%;
+  padding: 220px 16px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+
+.info {
+  font-size: 1.5rem;
+  text-align: justify;
+  line-height: 1.6;
+  margin: 0;
+  flex: 1;
+}
+
+.historia-contenido {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  max-width: 1465px;
+  margin: 0 auto; /* Centra el contenido */
+}
+
+.video-contenedor {
+  flex: 1;
+  border-radius: 10px;
+  box-shadow:0 12px 12px rgb(156 227 134);
+  padding: 15px;
+  padding-block-end: 60px;
+  
+}
+.video-contenedor video {
+  width: 100%;
+  border-radius: 17px;
+}
+
+.a-mano {
+  margin-top: 15px;
+  font-size: 1.5rem;
+  color: #333;
+  margin-right: 50%;
+}
+
+
 /* Tablet */
 @media (max-width: 768px) {
   .foto-container {
@@ -81,5 +140,35 @@ export default {
     max-height: calc(100vh - 70px);
     object-fit: scale-down;
   }
+
+  .historia{
+    padding: 30px 16px;
+  }
+
+  .video-contenedor {
+    padding: 10px;
+    padding-block-end: 20px;
+  }
+
+    .video-contenedor video {
+    border-radius: 8px;
+  }
+
+  .a-mano {
+    font-size: 1.1rem;
+    margin-right: 0;
+  }
+
+  .info {
+    font-size: 1rem;
+    text-align: justify;
+ }
 }
+ @media (max-width: 768px) {
+  .historia-contenido {
+    flex-direction: column;
+  } 
+ }  
+
+
 </style>
