@@ -1,3 +1,8 @@
+<script setup lang="ts">
+import { RouterLink } from 'vue-router';
+
+</script>
+
 <template>
   <header class="header">
     <div class="logo">
@@ -6,7 +11,7 @@
 
     <nav class="navegacion">
       <ul class="nav-nombres">
-        <li class="Menu">Nuestro Menu</li>
+        <li><RouterLink to="/menu" class="Menu">Nuestro Menu</RouterLink></li>
         <li class="acerca">A cerca de</li>
       </ul>
     </nav>

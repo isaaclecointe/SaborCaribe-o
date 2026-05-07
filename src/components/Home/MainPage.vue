@@ -24,16 +24,20 @@
 
     </div>
   </div>
+
+    <SeccionContacto />
 </template>
 
 <script>
 import NavBar from './NavBar.vue';
 import mobileImg from '../../assets/img movil.jpg';
 import desktopImg from '../../assets/imagen principal4.png';
+import SeccionContacto from './SeccionContacto.vue';
 
 export default {
   components: {
-    NavBar
+    NavBar,
+    SeccionContacto
   },
   data() {
     return {
@@ -169,6 +173,5 @@ export default {
     flex-direction: column;
   } 
  }  
-
 
 </style>

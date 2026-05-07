@@ -1,0 +1,132 @@
+[
+  {
+    "id": 1,
+    "nombre": "Tortilla Pequeña",
+    "descripcion": "De pollo, res o adobado. Tortilla de harina recién hecha, jugosa y bien sazonada.",
+    "precio": 23,
+    "categoria": "Tortillas de Harina",
+    "imagen": "Tortilla2.jpg",
+    "tag": "Popular",
+    "opciones": ["Pollo","Res", "Adobado"]
+  },
+  {
+    "id": 2,
+    "nombre": "Tortilla Grande de Pollo o Adobado",
+    "descripcion": "Tortilla grande con relleno generoso de pollo o adobado. Para el hambre de verdad.",
+    "precio": 31,
+    "categoria": "Tortillas de Harina",
+    "imagen": "Tortilla3.jpg",
+    "tag": "Favorita",
+    "opciones": ["Pollo", "Adobado"]
+  },
+  {
+    "id": 3,
+    "nombre": "Tortilla Grande de Res",
+    "descripcion": "Rellena con res tierna y bien condimentada. El sabor que enamora desde el primer bocado.",
+    "precio": 33,
+    "categoria": "Tortillas de Harina",
+    "imagen": "Tortilla4.jpg",
+    "tag": null,
+    "opciones": ["Res"]
+  },
+  {
+    "id": 4,
+    "nombre": "Tortilla Mixta",
+    "descripcion": "Lo mejor de los tres: res, adobado y pollo en una sola tortilla. La experiencia completa.",
+    "precio": 37,
+    "categoria": "Tortillas de Harina",
+    "imagen": "Tortilla5.jpg",
+    "tag": "⭐ Estrella",
+    "opciones": ["Res", "Adobado", "Pollo"]
+  },
+  {
+    "id": 5,
+    "nombre": "Quesadilla de Res, Adobado o Pollo",
+    "descripcion": "Quesadilla crujiente con queso derretido y tu elección de carne. Sencilla y deliciosa.",
+    "precio": 17,
+    "categoria": "Quesadillas",
+    "imagen": "Quesadilla.jpg",
+    "tag": "Popular",
+    "opciones": ["Res", "Adobado", "Pollo"]
+  },
+  {
+    "id": 6,
+    "nombre": "Quesadilla de Pepperoni y Jamón",
+    "descripcion": "El toque especial del menú. Queso fundido con pepperoni y jamón. Irresistible.",
+    "precio": 20,
+    "categoria": "Quesadillas",
+    "imagen": "QuesadillaPeperonne.jpg",
+    "tag": "Especial",
+    "opciones": ["Pepperoni", "Jamón"]
+  },
+  {
+    "id": 7,
+    "nombre": "Tacos de Birria (3x)",
+    "descripcion": "3 tacos de birria auténtica, caldosos y llenos de sabor. Perfectos para compartir o no.",
+    "precio": 35,
+    "categoria": "Tacos",
+    "imagen": "Birria.jpg",
+    "tag": "Furor",
+    "opciones": null
+  },
+  {
+    "id": 8,
+    "nombre": "Tacos de Birria (4x)",
+    "descripcion": "4 tacos de birria para el que sabe lo que quiere. El sabor de siempre, más abundante.",
+    "precio": 45,
+    "categoria": "Tacos",
+    "imagen": "Birria.jpg",
+    "tag": "Mejor valor",
+    "opciones": null
+  },
+  {
+    "id": 9,
+    "nombre": "Tacos al Pastor",
+    "descripcion": "Carne al pastor con piña, cilantro y cebolla. Un clásico que nunca falla.",
+    "precio": 20,
+    "categoria": "Tacos",
+    "imagen": "TacoPastor.jpg",
+    "tag": null,
+    "opciones": null
+  },
+  {
+    "id": 10,
+    "nombre": "Tacos de Res",
+    "descripcion": "Res tierna sobre tortilla, con todos los complementos. Tradición en cada mordida.",
+    "precio": 25,
+    "categoria": "Tacos",
+    "imagen": "TacoRes.jpg",
+    "tag": null,
+    "opciones": null
+  },
+  {
+    "id": 11,
+    "nombre": "Fresco de Jamaica",
+    "descripcion": "Jamaica natural, refrescante y con el dulzor justo. El acompañante perfecto.",
+    "precio": 7,
+    "categoria": "Frescos",
+    "imagen": "Jamaica.jpg",
+    "tag": null,
+    "opciones": null
+  },
+  {
+    "id": 12,
+    "nombre": "Fresco de Tamarindo",
+    "descripcion": "Tamarindo fresco, entre dulce y ácido. Un sabor que te recuerda a lo casero.",
+    "precio": 7,
+    "categoria": "Frescos",
+    "imagen": "Tamarindo.jpg",
+    "tag": null,
+    "opciones": null
+  },
+  {
+    "id": 13,
+    "nombre": "Fresco de Crema",
+    "descripcion": "Suave, cremoso y reconfortante. El fresco favorito de los que buscan algo diferente.",
+    "precio": 7,
+    "categoria": "Frescos",
+    "imagen": "Crema.jpg",
+    "tag": null,
+    "opciones": null
+  }
+]
