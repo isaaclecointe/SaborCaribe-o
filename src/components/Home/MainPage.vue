@@ -7,6 +7,8 @@
     </picture>
   </div>
 
+  
+
   <div class="historia">
    <div class="historia-contenido">  <!-- ✅ Adentro del div.historia y bien cerrado -->
      <div class="video-contenedor"> 
@@ -56,6 +58,7 @@ export default {
 }
 
 .foto-container {
+  
   width: 100%;
   height: calc(100vh - 120px);
   background-color: #d6d4d0; /* ← color gris que tiene la imagen de fondo */
@@ -63,6 +66,7 @@ export default {
   place-items: center;
   overflow: hidden;
 }
+
 
 .foto-negocio {
   width: 100%;

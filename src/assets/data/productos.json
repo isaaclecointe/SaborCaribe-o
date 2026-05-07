@@ -2,7 +2,7 @@
   {
     "id": 1,
     "nombre": "Tortilla Pequeña",
-    "descripcion": "De pollo, res o adobado. Tortilla de harina recién hecha, jugosa y bien sazonada.",
+    "descripcion": "Tortilla de harina recién hecha, jugosa y bien sazonada.",
     "precio": 23,
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla2.jpg",
@@ -12,7 +12,7 @@
   {
     "id": 2,
     "nombre": "Tortilla Grande de Pollo o Adobado",
-    "descripcion": "Tortilla grande con relleno generoso de pollo o adobado. Para el hambre de verdad.",
+    "descripcion": "Tortilla grande. Para el hambre de verdad.",
     "precio": 31,
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla3.jpg",
@@ -36,8 +36,8 @@
     "precio": 37,
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla5.jpg",
-    "tag": "⭐ Estrella",
-    "opciones": ["Res", "Adobado", "Pollo"]
+    "tag": "⭐ Estrella"
+    
   },
   {
     "id": 5,

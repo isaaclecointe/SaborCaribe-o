@@ -193,7 +193,7 @@ function cerrarModal() {
 }
 
 .menu__pretitle {
-  font-size: 13px;
+  font-size: 26px;
   color: var(--orange);
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -216,7 +216,7 @@ function cerrarModal() {
 
 .menu__subtitle {
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 23px;
   margin: 0;
 }
 
@@ -379,7 +379,7 @@ function cerrarModal() {
 }
 
 .card__descripcion {
-  font-size: 13px;
+  font-size: 20px;
   color: var(--text-muted);
   line-height: 1.6;
   margin: 0;
@@ -504,14 +504,14 @@ function cerrarModal() {
 }
 
 .modal__descripcion {
-  font-size: 15px;
+  font-size: 25px;
   color: var(--text-muted);
   line-height: 1.7;
   margin: 0;
 }
 
 .modal__opciones-titulo {
-  font-size: 12px;
+  font-size: 20px;
   color: var(--text-muted);
   font-weight: 700;
   text-transform: uppercase;
@@ -530,7 +530,7 @@ function cerrarModal() {
   color: var(--brown-light);
   padding: 4px 14px;
   border-radius: 100px;
-  font-size: 13px;
+  font-size: 23px;
   font-weight: 600;
 }
 
@@ -552,7 +552,7 @@ function cerrarModal() {
 
 .modal__btn {
   background: var(--orange);
-  color: white;
+  color: rgb(0, 0, 0);
   border: none;
   padding: 14px 28px;
   border-radius: 100px;
