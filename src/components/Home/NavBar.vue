@@ -14,7 +14,7 @@ import { RouterLink } from 'vue-router';
     <nav class="navegacion">
       <ul class="nav-nombres">
         <li><RouterLink to="/menu" class="Menu">Nuestro Menu</RouterLink></li>
-        <li class="acerca">A cerca de</li>
+        <li class="acerca"><RouterLink to="/acerca" class="acerca">A cerca de</RouterLink></li>
       </ul>
     </nav>
   </header>
@@ -60,12 +60,14 @@ header {
   color: rgb(207, 0, 86);
   cursor: pointer;
   font-size: 30px;
+  text-decoration: none;
 }
 
 .acerca {
   color: rgb(178, 238, 39);
   cursor: pointer;
   font-size: 30px;
+  text-decoration: none;
 }
 
 /* Tablet */
