@@ -319,7 +319,7 @@ const valores = [
 
 .hero__sub {
   font-size: clamp(15px, 1.4vw, 18px);
-  color: rgba(255,255,255,0.65);
+  color: rgba(3, 3, 3, 0.65);
   line-height: 1.8;
   max-width: 560px;
   margin: 0;
@@ -337,9 +337,9 @@ const valores = [
 .hero__year-num {
   display: block;
   font-family: 'Cormorant Garamond', serif;
-  font-size: clamp(80px, 12vw, 160px);
+  font-size: clamp(100px, 12vw, 160px);
   font-weight: 700;
-  color: rgba(255,255,255,0.06);
+  color: rgba(70, 50, 50, 0.411);
   line-height: 1;
 }
 
@@ -348,7 +348,7 @@ const valores = [
   font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgb(0, 0, 0);
 }
 
 /* ── ORIGEN ── */
