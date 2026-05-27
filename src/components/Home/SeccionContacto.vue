@@ -20,15 +20,7 @@
         <!-- ✅ Mapa embebido: ve a Google Maps, busca tu negocio,
              haz clic en "Compartir > Insertar mapa" y pega la URL del src aquí -->
         <div class="mapa-contenedor">
-          <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3868.868548642276!2d-89.77517132376641!3d14.14382478809427!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8f628db4eeaa0507%3A0xf7133ed922ef06b1!2sSabor%20Caribe%C3%B1o%2C%20Tortillas%20de%20Harina!5e0!3m2!1ses!2sgt!4v1776838225824!5m2!1ses!2sgt" 
-            width="100%"
-            height="100%"
-            style="border:0; border-radius: 20px;"
-            allowfullscreen
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-          ></iframe>
+          <Mapa />
         </div>
 
         <!-- Info derecha -->
@@ -37,11 +29,17 @@
           <!-- Horario -->
           <div class="tarjeta">
             <div class="tarjeta-icono">🕐</div>
-            <h3>Horario</h3>
+            <h3>Horarios</h3>
+            <h3> Jicaro</h3>
             <ul class="horario-lista">
               <li><span>Lunes – Sabado</span><span>3:00 pm – 8:00 pm</span></li>
-            <!-- <li><span>Sábado</span><span>8:00 am – 9:00 pm</span></li> -->build
+            <!-- <li><span>Sábado</span><span>8:00 am – 9:00 pm</span></li> -->
               <li><span>Domingo</span><span>4:00 pm – 8:00 pm</span></li>
+              <h3> Yupiltepeque Municipalidad</h3>
+              <li><span>Lunes – Sabado</span><span>9:00 am – 5:00 pm</span></li>
+               <li><span>Domingo</span><span>9:00 am – 2:00 pm</span></li>
+               <h3> Atescatempa Barrio el centro </h3>
+                <li><span>Lunes – Domingo</span><span>10:00 am – 9:00 pm</span></li>
             </ul>
           </div>
 
@@ -82,8 +80,14 @@
 </template>
 
 <script>
+
+import Mapa from '../Ubicaciones/Mapa.vue'
+
 export default {
-  name: 'ContactoSection'
+  name: 'ContactoSection',
+  components: {
+    Mapa
+  }
 }
 </script>
 
@@ -152,7 +156,7 @@ export default {
 .mapa-contenedor {
   height: 420px;
   border-radius: 20px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 8px 32px rgba(0,0,0,0.25);
 }
 

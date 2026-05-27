@@ -101,7 +101,7 @@
 
             <div class="modal__footer">
               <span class="modal__precio">Q{{ modalProducto.precio }}</span>
-              <button class="modal__btn" @click="cerrarModal">
+              <button class="modal__btn" @click="agregarAlCarrito(modalProducto)">
                 ¡Lo quiero! 🔥
               </button>
             </div>
@@ -109,6 +109,7 @@
         </div>
       </div>
     </Transition>
+    <CarritoSheet />
   </section>
 </template>
 
@@ -116,6 +117,10 @@
 import { ref, computed } from 'vue'
 import productos from '../../assets/data/productos.json'
 import navbar from '../Home/NavBar.vue'
+import CarritoSheet from '../Carrito/CarritoSheet.vue'
+import { useCarritoStore } from '../../store/carrito'
+
+const carrito = useCarritoStore()
 
 const imagenesMenu = import.meta.glob('../../assets/FotosMenu/*.{jpg,png,webp}', { eager: true, })
 function getImagen(archivo) {
@@ -138,6 +143,11 @@ const productosFiltrados = computed(() =>
     ? productos
     : productos.filter(p => p.categoria === categoriaActiva.value)
 )
+
+function agregarAlCarrito(producto) {
+  carrito.agregar(producto)
+  cerrarModal()
+}
 
 function abrirModal(producto) {
   modalProducto.value = producto
@@ -659,5 +669,46 @@ function cerrarModal() {
   .menu__grid {
     grid-template-columns: 1fr;
   }
+
+.carrito-flotante {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--orange);
+  color: white;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(232,98,26,0.4);
+  z-index: 999;
+  transition: transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carrito-flotante:hover {
+  transform: scale(1.1);
+}
+
+.carrito-flotante__contador {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--brown);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 }
 </style>
