@@ -47,20 +47,24 @@
           <TransitionGroup name="item">
             <div
               v-for="item in carrito.items"
-              :key="item.id"
+              :key="item.key"
               class="item-carrito"
             >
               <div class="item-carrito__info">
                 <span class="item-carrito__emoji">{{ item.emoji }}</span>
                 <div>
-                  <p class="item-carrito__nombre">{{ item.nombre }}</p>
+                  <p class="item-carrito__nombre">
+                    {{ item.nombre }}
+                    <span v-if="item.opcion" class="item-opcion">({{ item.opcion }})</span>
+                  </p>
                   <p class="item-carrito__precio">Q{{ item.precio }} c/u</p>
                 </div>
               </div>
               <div class="item-carrito__controles">
-                <button class="ctrl-btn" @click="carrito.quitar(item.id)">−</button>
+                <button class="ctrl-btn" @click="carrito.quitar(item.key)">−</button>
                 <span class="ctrl-cantidad">{{ item.cantidad }}</span>
-                <button class="ctrl-btn" @click="carrito.agregar(item)">+</button>
+                <!-- ✅ CAMBIO 1: usar aumentar(item.key) en vez de agregar(item) -->
+                <button class="ctrl-btn" @click="carrito.aumentar(item.key)">+</button>
                 <span class="item-carrito__subtotal">Q{{ item.precio * item.cantidad }}</span>
               </div>
             </div>
@@ -106,13 +110,16 @@
             </div>
           </div>
 
-          <!-- Hora -->
+          <!-- Comentario -->
           <div class="campo">
-            <label class="campo__label">⏰ Hora de recogida</label>
-            <select v-model="horaSeleccionada" class="campo__input campo__select">
-              <option value="" disabled>Elige una hora</option>
-              <option v-for="h in horas" :key="h" :value="h">{{ h }}</option>
-            </select>
+            <label class="campo__label">💬 Indicaciones especiales</label>
+            <textarea
+              v-model="comentario"
+              class="campo__input campo__textarea"
+              placeholder="Ej: sin mayonesa, sin salsa, voy en 30 min..."
+              rows="3"
+              maxlength="200"
+            ></textarea>
           </div>
         </div>
 
@@ -138,14 +145,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useCarritoStore } from '../../store/carrito.js'
 
 const carrito = useCarritoStore()
 
 const nombre = ref('')
 const sucursalSeleccionada = ref('')
-const horaSeleccionada = ref('')
+const comentario = ref('')
 const error = ref('')
 
 const sucursales = [
@@ -153,19 +160,6 @@ const sucursales = [
   { id: 'yupiltepeque', nombre: 'Sabor Caribeño', lugar: 'Yupiltepeque' },
   { id: 'atescatempa',  nombre: 'Sabor Caribeño', lugar: 'Atescatempa' },
 ]
-
-// Genera horas de 10:00 am a 7:30 pm en intervalos de 30 min
-const horas = computed(() => {
-  const lista = []
-  for (let h = 10; h <= 19; h++) {
-    const sufijo = h < 12 ? 'am' : 'pm'
-    const hora12 = h > 12 ? h - 12 : h
-    lista.push(`${hora12}:00 ${sufijo}`)
-    if (h < 19) lista.push(`${hora12}:30 ${sufijo}`)
-  }
-  lista.push('7:30 pm')
-  return lista
-})
 
 function enviarPedido() {
   error.value = ''
@@ -178,21 +172,20 @@ function enviarPedido() {
     error.value = '⚠️ Elige la sucursal donde vas a recoger'
     return
   }
-  if (!horaSeleccionada.value) {
-    error.value = '⚠️ Elige una hora de recogida'
-    return
-  }
 
   const sucursal = sucursales.find(s => s.id === sucursalSeleccionada.value)
   const lineasProductos = carrito.items
-    .map(i => `  • ${i.cantidad}x ${i.nombre} — Q${i.precio * i.cantidad}`)
+    .map(i => {
+      const opcion = i.opcion ? ` (${i.opcion})` : ''
+      return `  • ${i.cantidad}x ${i.nombre}${opcion} — Q${i.precio * i.cantidad}`
+    })
     .join('\n')
 
   const mensaje = `🌮 *NUEVO PEDIDO - Sabor Caribeño*
 
 👤 *Cliente:* ${nombre.value}
 📍 *Sucursal:* ${sucursal.nombre} ${sucursal.lugar}
-⏰ *Hora de recogida:* ${horaSeleccionada.value}
+${comentario.value ? `💬 *Indicaciones:* ${comentario.value}` : ''}
 
 📋 *Pedido:*
 ${lineasProductos}
@@ -211,7 +204,7 @@ function vaciarCarrito() {
   carrito.abierto = false
   nombre.value = ''
   sucursalSeleccionada.value = ''
-  horaSeleccionada.value = ''
+  comentario.value = ''   // ✅ CAMBIO 2: era horaSeleccionada, ahora comentario
   error.value = ''
 }
 </script>
@@ -261,9 +254,7 @@ function vaciarCarrito() {
   justify-content: center;
 }
 
-.carrito-fab__label {
-  font-size: 14px;
-}
+.carrito-fab__label { font-size: 14px; }
 
 /* ── Overlay ── */
 .overlay {
@@ -380,17 +371,18 @@ function vaciarCarrito() {
 .item-carrito__emoji { font-size: 28px; flex-shrink: 0; }
 
 .item-carrito__nombre {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #3d1f0a;
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .item-carrito__precio {
-  font-size: 12px;
+  font-size: 13px;
   color: #8c6a52;
   margin: 2px 0 0;
 }
@@ -400,6 +392,12 @@ function vaciarCarrito() {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.item-opcion {
+  color: #e8621a;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .ctrl-btn {
@@ -468,7 +466,7 @@ function vaciarCarrito() {
 }
 
 .sheet__form-titulo {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: #3d1f0a;
   margin: 0;
@@ -478,7 +476,7 @@ function vaciarCarrito() {
 .campo { display: flex; flex-direction: column; gap: 6px; }
 
 .campo__label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   color: #8c6a52;
   text-transform: uppercase;
@@ -490,7 +488,7 @@ function vaciarCarrito() {
   border: 2px solid #f5e6cc;
   border-radius: 10px;
   font-family: 'Nunito', sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   color: #3d1f0a;
   background: white;
   outline: none;
@@ -499,7 +497,11 @@ function vaciarCarrito() {
 
 .campo__input:focus { border-color: #e8621a; }
 
-.campo__select { cursor: pointer; }
+.campo__textarea {
+  resize: none;
+  line-height: 1.5;
+  min-height: 80px;
+}
 
 /* ── Sucursales ── */
 .sucursales {
@@ -529,13 +531,13 @@ function vaciarCarrito() {
 }
 
 .sucursal-btn__nombre {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #3d1f0a;
 }
 
 .sucursal-btn__lugar {
-  font-size: 13px;
+  font-size: 14px;
   color: #e8621a;
   font-weight: 600;
 }
@@ -578,11 +580,7 @@ function vaciarCarrito() {
   box-shadow: 0 8px 24px rgba(37,211,102,0.45);
 }
 
-.wa-icon {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-}
+.wa-icon { width: 22px; height: 22px; flex-shrink: 0; }
 
 /* ── Vaciar ── */
 .sheet__vaciar {
@@ -619,7 +617,7 @@ function vaciarCarrito() {
 .item-enter-from { opacity: 0; transform: translateX(-16px); }
 .item-leave-to { opacity: 0; transform: translateX(16px); }
 
-/* ── Desktop: panel lateral en pantallas grandes ── */
+/* ── Desktop ── */
 @media (min-width: 768px) {
   .sheet {
     left: auto;

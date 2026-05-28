@@ -7,25 +7,34 @@ export const useCarritoStore = defineStore('carrito', () => {
   const abierto = ref(false)
 
   // Agregar producto
-  function agregar(producto) {
-    const existente = items.value.find(i => i.id === producto.id)
+  function agregar(producto, opcion = null) {
+    // productos con opcion se tratan como items distintos 
+    const key = opcion ? `${producto.id}-${opcion}` : `${producto.id}`
+    const existente = items.value.find(i => i.key === key)
     if (existente) {
       existente.cantidad++
     } else {
-      items.value.push({ ...producto, cantidad: 1 })
+      items.value.push({ ...producto, key, opcion,cantidad: 1 })
     }
     abierto.value = true  // abre el panel automáticamente
   }
 
   // Quitar una unidad
-  function quitar(id) {
-    const item = items.value.find(i => i.id === id)
+  function quitar(key) {
+    const item = items.value.find(i => i.key === key)
     if (item.cantidad > 1) {
       item.cantidad--
     } else {
-      items.value = items.value.filter(i => i.id !== id)
+      items.value = items.value.filter(i => i.key !== key)
     }
   }
+
+  function aumentar(key) {
+  const item = items.value.find(i => i.key === key)
+  if (item) item.cantidad++
+}
+
+
 
   // Vaciar carrito
   function vaciar() {
@@ -42,5 +51,5 @@ export const useCarritoStore = defineStore('carrito', () => {
     items.value.reduce((sum, i) => sum + i.precio * i.cantidad, 0)
   )
 
-  return { items, abierto, agregar, quitar, vaciar, totalItems, totalPrecio }
+  return { items, abierto, agregar, quitar, aumentar, vaciar, totalItems, totalPrecio }
 })

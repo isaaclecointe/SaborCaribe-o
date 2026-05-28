@@ -102,4 +102,20 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   border-radius: 20px;
   z-index: 0;
 }
+
+/* ── Tablet ── */
+@media (max-width: 1023px) {
+  .mapa {
+    height: 350px;
+  }
+}
+
+/* ── Mobile ── */
+@media (max-width: 767px) {
+  .mapa {
+    height: 260px;
+    border-radius: 14px;
+  }
+}   
+    
 </style>

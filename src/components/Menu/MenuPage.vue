@@ -87,17 +87,21 @@
             <h2 class="modal__nombre">{{ modalProducto.nombre }}</h2>
             <p class="modal__descripcion">{{ modalProducto.descripcion }}</p>
 
-            <!-- Opciones -->
-            <div v-if="modalProducto.opciones" class="modal__opciones">
-              <p class="modal__opciones-titulo">Disponible en:</p>
-              <div class="modal__opciones-lista">
-                <span
-                  v-for="op in modalProducto.opciones"
-                  :key="op"
-                  class="opcion-tag"
-                >{{ op }}</span>
-              </div>
-            </div>
+           <!-- Opciones -->
+<div v-if="modalProducto.opciones" class="modal__opciones">
+  <p class="modal__opciones-titulo">Elige tu carne:</p>
+  <div class="modal__opciones-lista">
+    <button
+      v-for="op in modalProducto.opciones"
+      :key="op"
+      class="opcion-tag"
+      :class="{ 'opcion-tag--activa': opcionSeleccionada === op }"
+      @click.stop="opcionSeleccionada = op"
+    >
+      {{ op }}
+    </button>
+  </div>
+</div>
 
             <div class="modal__footer">
               <span class="modal__precio">Q{{ modalProducto.precio }}</span>
@@ -121,6 +125,7 @@ import CarritoSheet from '../Carrito/CarritoSheet.vue'
 import { useCarritoStore } from '../../store/carrito'
 
 const carrito = useCarritoStore()
+const opcionSeleccionada = ref(null)
 
 const imagenesMenu = import.meta.glob('../../assets/FotosMenu/*.{jpg,png,webp}', { eager: true, })
 function getImagen(archivo) {
@@ -145,12 +150,18 @@ const productosFiltrados = computed(() =>
 )
 
 function agregarAlCarrito(producto) {
-  carrito.agregar(producto)
+   // Si tiene opciones y no eligió ninguna, mostrar error
+  if(producto.opciones?.length > 1 && !opcionSeleccionada.value){
+    alert('⚠️ Por favor, elige una opcion de carne')
+    return
+  }
+  carrito.agregar(producto, opcionSeleccionada.value)
   cerrarModal()
 }
 
 function abrirModal(producto) {
   modalProducto.value = producto
+  opcionSeleccionada.value = producto.opciones?.length === 1 ? producto.opciones[0] : null 
   document.body.style.overflow = 'hidden'
 }
 
@@ -535,15 +546,6 @@ function cerrarModal() {
   gap: 8px;
 }
 
-.opcion-tag {
-  background: var(--warm);
-  color: var(--brown-light);
-  padding: 4px 14px;
-  border-radius: 100px;
-  font-size: 23px;
-  font-weight: 600;
-}
-
 .modal__footer {
   display: flex;
   align-items: center;
@@ -595,6 +597,32 @@ function cerrarModal() {
 }
 .modal-leave-to .modal {
   transform: translateY(20px) scale(0.97);
+}
+
+.opcion-tag {
+  background: var(--warm);
+  color: var(--brown-light);
+  padding: 8px 18px;
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Nunito', sans-serif;
+  outline: none; 
+}
+
+.opcion-tag:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.opcion-tag--activa {
+  background: var(--orange);
+  color: white;
+  border-color: var(--orange); /* ← borde oscuro que confirma la selección */
+  box-shadow: 0 0 0 3px rgba(233, 115, 52, 0.4); /* ← anillo exterior visible */
 }
 
 /* ── Tablet ── */
