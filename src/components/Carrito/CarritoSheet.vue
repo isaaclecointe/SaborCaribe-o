@@ -311,7 +311,7 @@ function vaciarCarrito() {
 }
 
 .sheet__subtitulo {
-  font-size: 13px;
+  font-size: 20px;
   color: #8c6a52;
   margin: 2px 0 0;
 }
@@ -371,7 +371,7 @@ function vaciarCarrito() {
 .item-carrito__emoji { font-size: 28px; flex-shrink: 0; }
 
 .item-carrito__nombre {
-  font-size: 15px;
+  font-size: 23px;
   font-weight: 700;
   color: #3d1f0a;
   margin: 0;
@@ -382,7 +382,7 @@ function vaciarCarrito() {
 }
 
 .item-carrito__precio {
-  font-size: 13px;
+  font-size: 20px;
   color: #8c6a52;
   margin: 2px 0 0;
 }
@@ -396,7 +396,7 @@ function vaciarCarrito() {
 
 .item-opcion {
   color: #e8621a;
-  font-size: 12px;
+  font-size: 22px;
   font-weight: 700;
 }
 
@@ -420,7 +420,7 @@ function vaciarCarrito() {
 .ctrl-btn:hover { background: #e8621a; color: white; }
 
 .ctrl-cantidad {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
   color: #3d1f0a;
   min-width: 20px;
@@ -428,7 +428,7 @@ function vaciarCarrito() {
 }
 
 .item-carrito__subtotal {
-  font-size: 14px;
+  font-size: 25px;
   font-weight: 800;
   color: #e8621a;
   min-width: 36px;
@@ -466,7 +466,7 @@ function vaciarCarrito() {
 }
 
 .sheet__form-titulo {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   color: #3d1f0a;
   margin: 0;
@@ -476,7 +476,7 @@ function vaciarCarrito() {
 .campo { display: flex; flex-direction: column; gap: 6px; }
 
 .campo__label {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 700;
   color: #8c6a52;
   text-transform: uppercase;
@@ -531,13 +531,13 @@ function vaciarCarrito() {
 }
 
 .sucursal-btn__nombre {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 700;
   color: #3d1f0a;
 }
 
 .sucursal-btn__lugar {
-  font-size: 14px;
+  font-size: 20px;
   color: #e8621a;
   font-weight: 600;
 }

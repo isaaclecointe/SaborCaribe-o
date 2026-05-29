@@ -6,7 +6,6 @@
     "precio": 23,
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla2.jpg",
-    "tag": "Popular",
     "opciones": ["Pollo","Res", "Adobado"]
   },
   {
@@ -16,7 +15,6 @@
     "precio": 31,
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla3.jpg",
-    "tag": "Favorita",
     "opciones": ["Pollo", "Adobado"]
   },
   {

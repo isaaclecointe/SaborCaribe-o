@@ -12,7 +12,7 @@
       <div class="hero__content">
         <span class="hero__eyebrow">Nuestra Historia</span>
         <h1 class="hero__title">
-          15 años llevando<br/>
+          13 años llevando<br/>
           <em>el sabor auténtico</em><br/>
           a Jutiapa
         </h1>
@@ -24,7 +24,7 @@
         </p>
       </div>
       <div class="hero__year">
-        <span class="hero__year-num">2009</span>
+        <span class="hero__year-num">2013</span>
         <span class="hero__year-label">Año de fundación</span>
       </div>
     </section>

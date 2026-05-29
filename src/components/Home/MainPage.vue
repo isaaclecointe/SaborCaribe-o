@@ -28,18 +28,23 @@
   </div>
 
     <SeccionContacto />
+
+    <Footer />
 </template>
 
 <script>
+
 import NavBar from './NavBar.vue';
 import mobileImg from '../../assets/img movil.jpg';
 import desktopImg from '../../assets/imagen principal4.png';
 import SeccionContacto from './SeccionContacto.vue';
+import Footer from '../SeccionFooter/Footer.vue';
 
 export default {
   components: {
     NavBar,
-    SeccionContacto
+    SeccionContacto,
+    Footer
   },
   data() {
     return {
