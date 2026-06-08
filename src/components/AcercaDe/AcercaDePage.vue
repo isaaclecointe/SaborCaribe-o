@@ -12,7 +12,7 @@
       <div class="hero__content">
         <span class="hero__eyebrow">Nuestra Historia</span>
         <h1 class="hero__title">
-          13 años llevando<br/>
+          1 años llevando<br/>
           <em>el sabor auténtico</em><br/>
           a Jutiapa
         </h1>
