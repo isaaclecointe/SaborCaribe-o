@@ -271,8 +271,9 @@ export default {
   }
 
   .hero-cta {
-    bottom: 24px;
-    width: 90%;
+    bottom: 20px;
+    right: 50%;
+    transform: translateX(50%);
   }
 
   .hero-cta__btn {
