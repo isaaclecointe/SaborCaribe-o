@@ -7,7 +7,6 @@
     </picture>
 
     <div class="hero-cta">
-    <p class="hero-cta__texto">Tortillas de harina hechas a mano 🌯</p>
     <RouterLink to="/menu" class="hero-cta__btn">
       🌮 Ver Menú y Hacer Pedido
     </RouterLink>
@@ -116,16 +115,10 @@ export default {
 }
 
 .hero-cta {
-  position: absolute;
-  bottom: 48px;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
+ position: absolute;
+  bottom: 40px;
+  right: 40px;
   z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
 }
 
 .hero-cta__texto {
