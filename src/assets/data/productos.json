@@ -126,5 +126,18 @@
     "imagen": "Crema.jpg",
     "tag": null,
     "opciones": null
-  }
+  },
+
+{
+  "id": 14,
+  "nombre": "Burrito de Pollo",
+  "descripcion": "Burrito relleno de pollo jugoso y bien sazonado. Una opción deliciosa y contundente.",
+  "precio": 12,
+  "categoria": "Tortillas de Harina",
+  "imagen": "Burrito.jpg",
+  "tag": "Nuevo",
+  "opciones": null
+}
+
+
 ]
