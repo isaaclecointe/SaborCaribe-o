@@ -55,7 +55,7 @@
     "categoria": "Quesadillas",
     "imagen": "QuesadillaPeperonne.jpg",
     "tag": "Especial",
-    "opciones": ["Pepperoni", "Jamón"]
+    "opciones": null
   },
   {
     "id": 7,

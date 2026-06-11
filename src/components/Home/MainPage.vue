@@ -5,9 +5,45 @@
       <source media="(max-width: 480px)" :srcset="mobileImg">
       <img :src="desktopImg" alt="imagen" class="foto-negocio">
     </picture>
+
+    <div class="hero-cta">
+    <p class="hero-cta__texto">Tortillas de harina hechas a mano 🌯</p>
+    <RouterLink to="/menu" class="hero-cta__btn">
+      🌮 Ver Menú y Hacer Pedido
+    </RouterLink>
+  </div>
   </div>
 
-  
+  <!-- Sección Cómo Pedir -->
+<section class="como-pedir">
+  <p class="como-pedir__eyebrow">— Así de fácil —</p>
+  <h2 class="como-pedir__titulo">¿Cómo hacer tu pedido?</h2>
+  <div class="como-pedir__pasos">
+    <div class="paso">
+      <span class="paso__numero">01</span>
+      <span class="paso__emoji">🍽️</span>
+      <h3 class="paso__titulo">Elige tu antojo</h3>
+      <p class="paso__texto">Entra al menú y selecciona lo que más se te antoje. Tortillas, tacos, quesadillas y más.</p>
+    </div>
+    <div class="paso__linea"></div>
+    <div class="paso">
+      <span class="paso__numero">02</span>
+      <span class="paso__emoji">🛒</span>
+      <h3 class="paso__titulo">Arma tu pedido</h3>
+      <p class="paso__texto">Agrega tus productos al carrito, elige tu sucursal y deja cualquier indicación especial.</p>
+    </div>
+    <div class="paso__linea"></div>
+    <div class="paso">
+      <span class="paso__numero">03</span>
+      <span class="paso__emoji">📲</span>
+      <h3 class="paso__titulo">Envía por WhatsApp</h3>
+      <p class="paso__texto">Con un solo toque tu pedido llega directo a la sucursal. ¡Nosotros lo preparamos!</p>
+    </div>
+  </div>
+  <RouterLink to="/menu" class="como-pedir__btn">
+    Ver el Menú →
+  </RouterLink>
+</section>
 
   <div class="historia">
    <div class="historia-contenido">  <!-- ✅ Adentro del div.historia y bien cerrado -->
@@ -33,7 +69,7 @@
 </template>
 
 <script>
-
+import { RouterLink } from 'vue-router';
 import NavBar from './NavBar.vue';
 import mobileImg from '../../assets/img movil.jpg';
 import desktopImg from '../../assets/imagen principal4.png';
@@ -44,7 +80,8 @@ export default {
   components: {
     NavBar,
     SeccionContacto,
-    Footer
+    Footer,
+    RouterLink
   },
   data() {
     return {
@@ -70,6 +107,185 @@ export default {
   display: grid;
   place-items: center;
   overflow: hidden;
+}
+
+
+/* ── Hero CTA ── */
+.foto-container {
+  position: relative; /* ← asegúrate que ya lo tiene o agrégalo */
+}
+
+.hero-cta {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.hero-cta__texto {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  font-family: 'Nunito', sans-serif;
+}
+
+.hero-cta__btn {
+  display: inline-block;
+  background: #e8621a;
+  color: white;
+  padding: 16px 36px;
+  border-radius: 100px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 28px rgba(232,98,26,0.5);
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.hero-cta__btn:hover {
+  background: #c04e10;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 36px rgba(232,98,26,0.6);
+}
+
+/* ── Cómo Pedir ── */
+.como-pedir {
+  background: #fdf6ec;
+  padding: 100px 24px;
+  text-align: center;
+}
+
+.como-pedir__eyebrow {
+  font-size: 13px;
+  color: #e8621a;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 12px;
+  font-family: 'Nunito', sans-serif;
+}
+
+.como-pedir__titulo {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(32px, 5vw, 56px);
+  color: #3d1f0a;
+  margin: 0 0 60px;
+  line-height: 1.1;
+}
+
+.como-pedir__pasos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  max-width: 1000px;
+  margin: 0 auto 48px;
+  flex-wrap: wrap;
+}
+
+.paso {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 260px;
+  padding: 32px 24px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(61,31,10,0.08);
+  transition: transform 0.3s ease;
+}
+
+.paso:hover {
+  transform: translateY(-8px);
+}
+
+.paso__numero {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8621a;
+  letter-spacing: 0.15em;
+}
+
+.paso__emoji {
+  font-size: 48px;
+}
+
+.paso__titulo {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px;
+  color: #3d1f0a;
+  margin: 0;
+}
+
+.paso__texto {
+  font-size: 14px;
+  color: #8c6a52;
+  line-height: 1.7;
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+}
+
+.paso__linea {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #e8621a, #f5a623);
+  flex-shrink: 0;
+  margin: 0 8px;
+}
+
+.como-pedir__btn {
+  display: inline-block;
+  background: #3d1f0a;
+  color: white;
+  padding: 14px 32px;
+  border-radius: 100px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.25s ease;
+}
+
+.como-pedir__btn:hover {
+  background: #e8621a;
+  transform: translateY(-2px);
+}
+
+/* ── Mobile ── */
+@media (max-width: 767px) {
+  .paso__linea {
+    width: 2px;
+    height: 40px;
+    margin: 4px 0;
+  }
+
+  .como-pedir__pasos {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero-cta {
+    bottom: 24px;
+    width: 90%;
+  }
+
+  .hero-cta__btn {
+    font-size: 15px;
+    padding: 14px 28px;
+  }
 }
 
 
