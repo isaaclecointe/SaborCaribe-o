@@ -12,6 +12,8 @@ import iconUrl from 'leaflet/dist/images/marker-icon.png'
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png'
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png'
 import fotoNegocio from '../../assets/FotosSucursales/fotoNegocio.jpeg'
+import fotoNegocio2 from '../../assets/FotosSucursales/sucursalYupe.jpg'
+import fotoNegocio3 from '../../assets/FotosSucursales/Sucursal3.jpeg'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl })
@@ -24,19 +26,22 @@ const ubicaciones = [
     nombre: 'Sabor Caribeño',
     coords: [14.14382, -89.77517],  // ← ya la tienes
     descripcion: 'Calle principal el Jicaro, Yupiltepeque',
-    Horarios: 'Lunes – Sabado: 3:00 pm – 8:00 pm, Domingo: 4:00 pm – 8:00 pm'
+    Horarios: 'Lunes – Sabado: 3:00 pm – 8:00 pm, Domingo: 4:00 pm – 8:00 pm',
+    foto: fotoNegocio
   },
   {
     nombre: 'Sabor Caribeño — Sucursal 2',
-    coords: [14.195349804387826, -89.79224731804042],      // ← reemplaza con las reales
+    coords: [14.195349804387826, -89.79224731804042],      
     descripcion: 'Yupiltepeque, Jutiapa',
-    Horarios: 'Lunes – Sabado: 9:00 am – 5:00 pm, Domingo: 9:00 am – 2:00 pm'
+    Horarios: 'Lunes – Sabado: 9:00 am – 5:00 pm, Domingo: 9:00 am – 2:00 pm',
+    foto: sucursalYupe
   },
   {
     nombre: 'Sabor Caribeño — Sucursal 3',
-    coords: [14.175814516065818, -89.74249762638493],      // ← reemplaza con las reales
+    coords: [14.175814516065818, -89.74249762638493],    
     descripcion: 'Atescatempa, Jutiapa',
-    Horarios: 'Lunes – Domingo: 10:00 am – 9:00 pm'
+    Horarios: 'Lunes – Domingo: 10:00 am – 9:00 pm',
+    foto: sucursal3
   },
 ]
 
@@ -79,7 +84,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     L.marker(u.coords, { icon: iconoPersonalizado })
       .addTo(mapa)
       .bindPopup(`
-          <img src="${fotoNegocio}" style="width:200px; height:120px; object-fit:cover; border-radius:8px; display:block; margin-bottom:8px;"/>
+          <img src="${u.foto}" style="width:200px; height:120px; object-fit:cover; border-radius:8px; display:block; margin-bottom:8px;"/>
           <strong>Sabor Caribeño</strong>
           <div style="font-family: sans-serif; padding: 4px;">
           <strong style="color: #e8621a; font-size: 14px;">${u.nombre}</strong><br/>
