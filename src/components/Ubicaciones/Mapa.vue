@@ -34,14 +34,14 @@ const ubicaciones = [
     coords: [14.195349804387826, -89.79224731804042],      
     descripcion: 'Yupiltepeque, Jutiapa',
     Horarios: 'Lunes – Sabado: 9:00 am – 5:00 pm, Domingo: 9:00 am – 2:00 pm',
-    foto: sucursalYupe
+    foto: fotoNegocio2
   },
   {
     nombre: 'Sabor Caribeño — Sucursal 3',
     coords: [14.175814516065818, -89.74249762638493],    
     descripcion: 'Atescatempa, Jutiapa',
     Horarios: 'Lunes – Domingo: 10:00 am – 9:00 pm',
-    foto: sucursal3
+    foto: fotoNegocio3
   },
 ]
 
