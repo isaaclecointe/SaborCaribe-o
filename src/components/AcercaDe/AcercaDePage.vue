@@ -45,12 +45,12 @@
             <p>
               Desde el primer día apostamos por los ingredientes frescos, la
               elaboración a mano y un sabor que habla por sí solo. Esa apuesta
-              no ha cambiado en 15 años.
+              no ha cambiado en 13 años.
             </p>
           </div>
           <div class="origen__numeros">
             <div class="numero-card">
-              <span class="numero-card__cifra">15</span>
+              <span class="numero-card__cifra">13</span>
               <span class="numero-card__unidad">años</span>
               <span class="numero-card__label">de tradición</span>
             </div>
@@ -72,7 +72,7 @@
       <div class="timeline__container">
         <div class="timeline__header">
           <span class="timeline__eyebrow">El camino recorrido</span>
-          <h2 class="timeline__titulo">15 años de historia</h2>
+          <h2 class="timeline__titulo">13 años de historia</h2>
         </div>
         <div class="timeline__items">
           <div
@@ -137,7 +137,7 @@
     <section class="cta">
       <div class="cta__content">
         <h2 class="cta__titulo">¿Listo para probarlo?</h2>
-        <p class="cta__sub">15 años de sabor te esperan en cada tortilla.</p>
+        <p class="cta__sub">13 años de sabor te esperan en cada tortilla.</p>
         <RouterLink to="/menu" class="cta__btn">Ver nuestro menú →</RouterLink>
       </div>
     </section>
@@ -151,33 +151,33 @@ import NavBar from '../Home/NavBar.vue'
 
 const hitos = [
   {
-    anio: '2009',
+    
     emoji: '🌱',
     titulo: 'El nacimiento',
     texto: 'Sabor Caribeño abre sus puertas en Jutiapa con una promesa: ofrecer la mejor tortilla de harina de Guatemala hecha completamente a mano.'
   },
   {
-    anio: '2012',
+    
     emoji: '🔥',
     titulo: 'El sabor conquista Jutiapa',
     texto: 'La palabra se corre. Nuestras tortillas se convierten en el referente de la ciudad y la demanda crece semana a semana.'
   },
   {
-    anio: '2016',
+    
     emoji: '🌮',
     titulo: 'Ampliamos el menú',
     texto: 'Incorporamos tacos, quesadillas y frescos naturales, manteniendo siempre la misma dedicación artesanal en cada preparación.'
   },
   {
-    anio: '2020',
+    
     emoji: '💪',
     titulo: 'Resilencia y adaptación',
     texto: 'Ante los retos del mundo, nos reinventamos sin perder nuestra esencia. La comunidad de Jutiapa nos respalda más que nunca.'
   },
   {
-    anio: '2024',
+    
     emoji: '🚀',
-    titulo: '15 años y seguimos',
+    titulo: '13 años y seguimos',
     texto: 'Celebramos década y media de tradición, sabor y comunidad. La misión sigue siendo la misma: la mejor tortilla de harina para cada jutiapaneco.'
   },
 ]
@@ -201,7 +201,7 @@ const valores = [
   {
     emoji: '⭐',
     titulo: 'Calidad constante',
-    texto: 'En 15 años nunca hemos cedido en calidad. El primer bocado debe ser tan bueno como el último.'
+    texto: 'En 13 años nunca hemos cedido en calidad. El primer bocado debe ser tan bueno como el último.'
   },
 ]
 </script>
