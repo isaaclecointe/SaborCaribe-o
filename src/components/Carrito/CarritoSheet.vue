@@ -147,6 +147,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useCarritoStore } from '../../store/carrito.js'
+import { db } from '../../firebase.js'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 
 const carrito = useCarritoStore()
 
@@ -161,7 +163,7 @@ const sucursales = [
   { id: 'atescatempa',  nombre: 'Sabor Caribeño', lugar: 'Atescatempa' },
 ]
 
-function enviarPedido() {
+async function enviarPedido() {
   error.value = ''
 
   if (!nombre.value.trim()) {
@@ -180,6 +182,30 @@ function enviarPedido() {
       return `  • ${i.cantidad}x ${i.nombre}${opcion} — Q${i.precio * i.cantidad}`
     })
     .join('\n')
+
+
+   // ← AGREGA ESTO: guarda el pedido en Firebase
+  try {
+    await addDoc(collection(db, 'pedidos'), {
+      cliente: nombre.value,
+      sucursal: sucursal.lugar,
+      sucursalId: sucursalSeleccionada.value,
+      comentario: comentario.value || '',
+      productos: carrito.items.map(i => ({
+        nombre: i.nombre,
+        opcion: i.opcion || null,
+        cantidad: i.cantidad,
+        precio: i.precio,
+        subtotal: i.precio * i.cantidad
+      })),
+      total: carrito.totalPrecio,
+      estado: 'nuevo',
+      fecha: serverTimestamp()
+    })
+  } catch (e) {
+    console.error('Error guardando pedido:', e)
+  }
+
 
   const mensaje = `🌮 *NUEVO PEDIDO - Sabor Caribeño*
 
