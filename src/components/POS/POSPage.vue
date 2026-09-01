@@ -35,32 +35,56 @@
             <button class="drawer__cerrar" @click="menuAbierto = false">✕</button>
           </div>
 
-          <div class="drawer__seccion">
-            <p class="drawer__titulo">Turno de hoy</p>
-            <div class="turno-card">
-              <div class="turno-fila">
-                <span>💵 Efectivo</span><strong>Q{{ totalEfectivo }}</strong>
-              </div>
-              <div class="turno-fila">
-                <span>💳 Tarjeta</span><strong>Q{{ totalTarjeta }}</strong>
-              </div>
-              <div class="turno-fila turno-fila--total">
-                <span>Total vendido</span><strong>Q{{ totalEfectivo + totalTarjeta }}</strong>
-              </div>
-              <div class="turno-fila">
-                <span>🧾 Pedidos</span><strong>{{ pedidosHoy.length }}</strong>
-              </div>
-            </div>
-          </div>
+         <div class="drawer__seccion">
+  <p class="drawer__titulo">Turno actual</p>
 
-          <div class="drawer__acciones">
-            <button class="drawer__btn drawer__btn--limpiar" @click="borrarHistorialCompleto">
-              🗑️ Limpiar historial
-            </button>
-            <button class="drawer__btn drawer__btn--salir" @click="cerrarSesion">
-              🔒 Cerrar sesión
-            </button>
-          </div>
+  <div v-if="turnoActual" class="turno-card">
+    <div class="turno-fila">
+      <span>🕐 Abierto</span>
+      <strong>{{ horaApertura }}</strong>
+    </div>
+    <div class="turno-fila">
+      <span>🏦 Fondo inicial</span>
+      <strong>Q{{ turnoActual.fondoInicial }}</strong>
+    </div>
+    <div class="turno-fila">
+      <span>💵 Efectivo</span><strong>Q{{ ventasEfectivo }}</strong>
+    </div>
+    <div class="turno-fila">
+      <span>💳 Tarjeta</span><strong>Q{{ ventasTarjeta }}</strong>
+    </div>
+    <div class="turno-fila turno-fila--total">
+      <span>Total vendido</span>
+      <strong>Q{{ ventasEfectivo + ventasTarjeta }}</strong>
+    </div>
+    <div class="turno-fila">
+      <span>🧾 Pedidos</span><strong>{{ pedidosTurno.length }}</strong>
+    </div>
+  </div>
+
+  <p v-else class="drawer__sin-turno">No hay turno abierto</p>
+</div>
+
+
+<button class="drawer__btn" @click="probarImpresora">🖨️ Probar impresora</button>
+<div class="drawer__acciones">
+  <button class="drawer__btn drawer__btn--historial" @click="irAlHistorial">
+    📊 Historial de turnos
+  </button>
+  <button
+    v-if="turnoActual"
+    class="drawer__btn drawer__btn--cerrar-turno"
+    @click="intentarCerrarTurno"
+  >
+    🔒 Cerrar turno
+  </button>
+  <button class="drawer__btn drawer__btn--limpiar" @click="borrarHistorialCompleto">
+    🗑️ Limpiar historial
+  </button>
+  <button class="drawer__btn drawer__btn--salir" @click="cerrarSesion">
+    🚪 Cerrar sesión
+  </button>
+</div>
         </aside>
       </div>
     </Transition>
@@ -120,7 +144,6 @@
             <div v-for="item in orden" :key="item.key" class="resumen__item">
               <div class="resumen__item-info">
                 <span class="resumen__item-nombre">{{ item.nombre }}</span>
-                <span v-if="item.opcion" class="resumen__item-opcion">{{ item.opcion }}</span>
               </div>
               <div class="resumen__item-ctrl">
                 <button @click="quitarItem(item.key)">−</button>
@@ -282,11 +305,12 @@
           <div class="opciones-modal__lista">
             <button
               v-for="op in productoConOpciones.opciones"
-              :key="op"
+              :key="op.nombre"
               class="opcion-btn"
               @click="confirmarOpcion(op)"
             >
-              {{ op }}
+              {{ op.nombre }}
+               <span v-if="productoConOpciones.esFusion" class="opcion-btn__precio">Q{{ op.precio }}</span>
             </button>
           </div>
           <button class="opciones-modal__cancelar" @click="productoConOpciones = null">Cancelar</button>
@@ -354,6 +378,119 @@
       </div>
     </Transition>
 
+    <!-- ── MODAL ABRIR TURNO (bloqueante) ── -->
+<div v-if="!cargandoTurno && !turnoActual" class="turno-overlay">
+  <div class="turno-modal">
+    <div class="turno-modal__icon">🔓</div>
+    <h2>Abrir turno</h2>
+    <p class="turno-modal__sub">
+      Debes abrir un turno para poder registrar ventas
+    </p>
+
+    <label class="turno-modal__label">Efectivo inicial en caja</label>
+    <input
+      v-model.number="fondoInicial"
+      type="number"
+      class="turno-modal__input"
+      placeholder="0"
+      @keyup.enter="abrirTurno"
+    />
+
+    <div class="turno-modal__rapidos">
+      <button class="tr-btn" @click="fondoInicial = 0">Sin fondo (Q0)</button>
+      <button class="tr-btn" @click="fondoInicial = 100">Q100</button>
+      <button class="tr-btn" @click="fondoInicial = 200">Q200</button>
+      <button class="tr-btn" @click="fondoInicial = 500">Q500</button>
+    </div>
+
+    <button class="turno-modal__ok" @click="abrirTurno">
+      Abrir turno
+    </button>
+  </div>
+</div>
+
+<!-- ── MODAL CERRAR TURNO ── -->
+<div v-if="modalCerrarTurno" class="turno-overlay" @click.self="modalCerrarTurno = false">
+  <div class="turno-modal">
+    <div class="turno-modal__icon">🔒</div>
+    <h2>Cerrar turno</h2>
+    <p class="turno-modal__sub">Cuenta el efectivo en caja</p>
+
+    <div class="cierre-resumen">
+      <div class="cierre-fila">
+        <span>🏦 Fondo inicial</span><strong>Q{{ turnoActual?.fondoInicial || 0 }}</strong>
+      </div>
+      <div class="cierre-fila">
+        <span>💵 Ventas efectivo</span><strong>Q{{ ventasEfectivo }}</strong>
+      </div>
+      <div class="cierre-fila cierre-fila--destacado">
+        <span>Debería haber en caja</span><strong>Q{{ efectivoEsperado }}</strong>
+      </div>
+      <div class="cierre-fila">
+        <span>💳 Ventas tarjeta</span><strong>Q{{ ventasTarjeta }}</strong>
+      </div>
+      <div class="cierre-fila cierre-fila--total">
+        <span>Total vendido</span><strong>Q{{ ventasEfectivo + ventasTarjeta }}</strong>
+      </div>
+    </div>
+
+    <label class="turno-modal__label">Efectivo contado en caja</label>
+    <input
+      v-model.number="efectivoContado"
+      type="number"
+      class="turno-modal__input"
+      placeholder="0"
+    />
+
+    <div
+      v-if="efectivoContado !== null && efectivoContado !== ''"
+      class="cierre-diferencia"
+      :class="{
+        'cierre-diferencia--ok': diferenciaCaja === 0,
+        'cierre-diferencia--falta': diferenciaCaja < 0,
+        'cierre-diferencia--sobra': diferenciaCaja > 0
+      }"
+    >
+      <span v-if="diferenciaCaja === 0">✅ Caja cuadrada</span>
+      <span v-else-if="diferenciaCaja < 0">⚠️ Faltan Q{{ Math.abs(diferenciaCaja) }}</span>
+      <span v-else>💰 Sobran Q{{ diferenciaCaja }}</span>
+    </div>
+
+    <div class="turno-modal__acciones">
+      <button class="turno-modal__cancelar" @click="modalCerrarTurno = false">
+        Cancelar
+      </button>
+      <button class="turno-modal__ok" @click="cerrarTurno">
+        Confirmar cierre
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL PEDIDOS PENDIENTES ── -->
+<div v-if="modalPendientes" class="turno-overlay" @click.self="modalPendientes = false">
+  <div class="turno-modal">
+    <div class="turno-modal__icon">⚠️</div>
+    <h2>Pedidos pendientes</h2>
+    <p class="turno-modal__sub">
+      No puedes cerrar el turno con {{ pedidosPendientes.length }}
+      pedido{{ pedidosPendientes.length !== 1 ? 's' : '' }} sin resolver
+    </p>
+
+    <div class="pendientes-lista">
+      <div v-for="p in pedidosPendientes" :key="p.id" class="pendiente-item">
+        <span class="pendiente-item__nombre">{{ p.cliente }}</span>
+        <span class="pendiente-item__estado">{{ etiquetaEstado(p.estado) }}</span>
+        <span class="pendiente-item__total">Q{{ p.total }}</span>
+      </div>
+    </div>
+
+    <button class="turno-modal__ok" @click="modalPendientes = false; tabActivo = 'activos'">
+      Ver pedidos
+    </button>
+  </div>
+</div>
+
   </div>
 </template>
 
@@ -365,8 +502,59 @@ import productosData from '../../assets/data/productos.json'
 import { db, auth } from '../../firebase.js'
 import {
   collection, addDoc, onSnapshot, doc, updateDoc, orderBy,
-  query, serverTimestamp, writeBatch, getDocs, where
+  query, serverTimestamp, writeBatch, getDocs, where, limit
 } from 'firebase/firestore'
+
+import { imprimirTicketCocina, probarImpresora } from '../../impresora.js'
+
+const nombresCortosPos = {
+  5:'Quesadillas',
+  6: 'Quesadilla Peperonne y Jamon'
+}
+// ── Productos fusionados solo para el POS ──
+const fusionesPOS = [
+  {
+    id: 'tortilla-grande',
+    nombre: 'Tortilla Grande',
+    categoria: 'Tortillas de Harina',
+    reemplaza: [2, 3],        // ids que oculta del grid
+    opciones: [
+      { nombre: 'Pollo',   precio: 31 },
+      { nombre: 'Adobado', precio: 31 },
+      { nombre: 'Res',     precio: 33 }
+    ]
+  }
+]
+
+// Lista de productos que ve el POS
+const productosPOS = computed(() => {
+  const ocultos = fusionesPOS.flatMap(f => f.reemplaza)
+
+  // Productos normales (sin los que se fusionaron)
+  const normales = productosData
+    .filter(p => !ocultos.includes(p.id))
+    .map(p => ({
+      ...p,
+      nombreCorto: nombresCortosPos[p.id] || p.nombre,
+      // Convierte opciones simples a objetos con precio
+      opciones: p.opciones
+        ? p.opciones.map(o => ({ nombre: o, precio: p.precio }))
+        : null
+    }))
+
+  // Inserta las fusiones en la posición del primer id que reemplazan
+  const resultado = [...normales]
+  fusionesPOS.forEach(f => {
+    const precioBase = Math.min(...f.opciones.map(o => o.precio))
+    resultado.push({ ...f, precio: precioBase, esFusion: true })
+  })
+
+  return resultado.sort((a, b) => {
+    const ia = typeof a.id === 'number' ? a.id : 2.5
+    const ib = typeof b.id === 'number' ? b.id : 2.5
+    return ia - ib
+  })
+})
 
 const router = useRouter()
 
@@ -379,6 +567,22 @@ const pedidos = ref([])
 const productoConOpciones = ref(null)
 let unsubscribe = null
 let intervaloPestana = null
+
+// ── Turno ──
+const turnoActual = ref(null)
+const cargandoTurno = ref(true)
+const modalAbrirTurno = ref(false)
+const modalCerrarTurno = ref(false)
+const modalPendientes = ref(false)
+const fondoInicial = ref(null)
+const efectivoContado = ref(null)
+let unsubTurno = null
+
+const horaApertura = computed(() => {
+  if (!turnoActual.value?.fechaApertura?.toDate) return '—'
+  return turnoActual.value.fechaApertura.toDate()
+    .toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })
+})
 
 // ── Edición ──
 const pedidoEditandoId = ref(null)
@@ -404,10 +608,11 @@ const pedidosAnteriores = ref(new Set())
 const primeraCarga = ref(true)
 
 // ── Cobro ──
+const cobroPedidoId = ref(null) 
 const cobroAbierto = ref(false)
 const metodoPago = ref('efectivo')
 const efectivoRecibido = ref(null)
-const pedidoACobrar = ref(null)
+
 
 // ── Categorías ──
 const categorias = computed(() => {
@@ -417,22 +622,26 @@ const categorias = computed(() => {
 
 const productosFiltrados = computed(() =>
   categoriaActiva.value === 'Todo'
-    ? productosData
-    : productosData.filter(p => p.categoria === categoriaActiva.value)
+    ? productosPOS.value
+    : productosPOS.value.filter(p => p.categoria === categoriaActiva.value)
 )
 
 // ── Tabs ──
 const enProceso = ['nuevo', 'guardado', 'listo']
 
 const contadorActivos = computed(() =>
-  pedidos.value.filter(p => 
-  (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) || (p.tipoOrden === 'local' && ['nuevo', 'guardado'].includes(p.estado))
-).length
-  
+  pedidos.value.filter(p =>
+    esDelTurnoActual(p) && (
+      (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) ||
+      (p.tipoOrden === 'local' && ['nuevo', 'guardado'].includes(p.estado))
+    )
+  ).length
 )
 
 const contadorLocal = computed(() =>
-  pedidos.value.filter(p => enProceso.includes(p.estado) && p.tipoOrden === 'local').length
+  pedidos.value.filter(p =>
+    esDelTurnoActual(p) && enProceso.includes(p.estado) && p.tipoOrden === 'local'
+  ).length
 )
 
 const tabs = computed(() => [
@@ -443,17 +652,27 @@ const tabs = computed(() => [
   { id: 'cancelados', label: '❌ Cancelados', contador: 0 },
 ])
 
+// ── Solo pedidos del turno actual ──
+function esDelTurnoActual(p) {
+  if (!turnoActual.value?.fechaApertura?.toDate) return false
+  if (!p.fecha?.toDate) return false
+  return p.fecha.toDate() >= turnoActual.value.fechaApertura.toDate()
+}
+
 const pedidosVista = computed(() => {
+ const delTurno = pedidos.value.filter(esDelTurnoActual)
+
   if (tabActivo.value === 'activos')
-    return pedidos.value.filter(p => (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) ||
-   (p.tipoOrden === 'local' && ['nuevo', 'guardado', ].includes(p.estado))
-  )
+    return delTurno.filter(p =>
+      (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) ||
+      (p.tipoOrden === 'local' && ['nuevo', 'guardado'].includes(p.estado))
+    )
   if (tabActivo.value === 'local')
-    return pedidos.value.filter(p => enProceso.includes(p.estado) && p.tipoOrden === 'local')
+    return delTurno.filter(p => enProceso.includes(p.estado) && p.tipoOrden === 'local')
   if (tabActivo.value === 'entregados')
-    return pedidos.value.filter(p => p.estado === 'entregado')
+    return delTurno.filter(p => p.estado === 'entregado')
   if (tabActivo.value === 'cancelados')
-    return pedidos.value.filter(p => p.estado === 'cancelado')
+    return delTurno.filter(p => p.estado === 'cancelado')
   return []
 })
 
@@ -484,10 +703,23 @@ function confirmarOpcion(opcion) {
 }
 
 function agregarProducto(producto, opcion = null) {
-  const key = opcion ? `${producto.id}-${opcion}` : `${producto.id}`
+  const nombreOp = opcion?.nombre || null
+  const precio = opcion?.precio ?? producto.precio
+  const base = producto.nombreCorto || producto.nombre
+  const nombreCompleto = nombreOp ? `${base} ${nombreOp}` : base
+
+  const key = nombreOp ? `${producto.id}-${nombreOp}` : `${producto.id}`
   const existe = orden.value.find(i => i.key === key)
+
   if (existe) existe.cantidad++
-  else orden.value.push({ ...producto, key, opcion, cantidad: 1 })
+  else orden.value.push({
+    id: producto.id,
+    nombre: nombreCompleto,
+    precio,
+    opcion: nombreOp,
+    key,
+    cantidad: 1
+  })
 }
 
 function sumarItem(key) {
@@ -556,7 +788,9 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       montoPagado: nuevoPagado,
       pagado: nuevoPagado >= totalOrden.value,
       metodoPago: datosPago?.metodo || pedidoEditando.value.metodoPago || null,
-      ...(datosPago ? { estado: 'nuevo' } : {})
+       ...(datosPago
+        ? { estado: pedidoEditando.value.estado === 'listo' ? 'entregado' : 'nuevo' }
+        : {})
     })
   } else {
     // Crear pedido nuevo
@@ -579,13 +813,22 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
     })
   }
 
+    // Imprime el ticket de cocina
+  imprimirTicketCocina({
+    cliente: nombre,
+    tipoOrden,
+    origen: 'pos',
+    productos,
+    comentario: pedidoEditando.value?.comentario || ''
+  })
+
   orden.value = []
   pedidoEditandoId.value = null
 }
 
 // ── Editar ──
 function esEditable(pedido) {
-  return pedido.origen !== 'cancelado' && pedido.estado !== 'entregado'
+  return pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'
 }
 
 function editarPedido(pedido) {
@@ -612,11 +855,9 @@ function cancelarEdicion() {
 
 // ── Cobro ──
 const montoACobrar = computed(() => {
-  if (pedidoACobrar.value) {
-  return pedidoACobrar.value.total - (pedidoACobrar.value.montoPagado || 0)
-}
-  if (pedidoEditando.value) return saldoPendiente.value
+  if (pedidoEditando.value) return saldoPendiente.value 
   return totalOrden.value
+
 })
 
 const sugerencias = computed(() => {
@@ -633,14 +874,28 @@ const puedeConfirmar = computed(() =>
 
 function abrirCobro(nombre) {
   nombreParaCobro.value = nombre
-  pedidoACobrar.value = null
+  cobroPedidoId.value = pedidoEditandoId.value
   metodoPago.value = 'efectivo'
   efectivoRecibido.value = null
   cobroAbierto.value = true
 }
 
 function cobrarPedidoExistente(pedido) {
-  pedidoACobrar.value = pedido
+  pedidoEditandoId.value = pedido.id
+  cobroPedidoId.value = pedido.id
+  orden.value = pedido.productos.map((p, i) => {
+    const original = productosData.find(x => x.nombre === p.nombre)
+    const baseId = original?.id ?? `x${i}`
+    return {
+      id: baseId,
+      nombre: p.nombre,
+      precio: p.precio,
+      opcion: p.opcion,
+      cantidad: p.cantidad,
+      key: p.opcion ? `${baseId}-${p.opcion}` : `${baseId}`
+    }
+  })
+  nombreParaCobro.value = pedido.cliente
   metodoPago.value = 'efectivo'
   efectivoRecibido.value = null
   cobroAbierto.value = true
@@ -658,17 +913,10 @@ async function confirmarCobro() {
     recibido: metodoPago.value === 'efectivo' ? efectivoRecibido.value : null,
     cambio: metodoPago.value === 'efectivo' ? efectivoRecibido.value - montoACobrar.value : null
   }
+ // Restaura el id por si algo lo borró
+  if (cobroPedidoId.value) pedidoEditandoId.value = cobroPedidoId.value
 
-  if (pedidoACobrar.value) {
-    await updateDoc(doc(db, 'pedidos', pedidoACobrar.value.id), {
-      estado: 'entregado',
-      pagado: true,
-      montoPagado: pedidoACobrar.value.total,
-      metodoPago: datosPago.metodo,
-      efectivoRecibido: datosPago.recibido,
-      cambio: datosPago.cambio
-    })
-  } else {
+  {
     await persistirPedido(
       'nuevo',
       pedidoEditando.value?.tipoOrden || 'llevar',
@@ -678,6 +926,20 @@ async function confirmarCobro() {
   }
   cerrarCobro()
 }
+
+
+ // if (pedidoACobrar.value) {
+  //   await updateDoc(doc(db, 'pedidos', pedidoACobrar.value.id), {
+  //     estado: 'entregado',
+  //     pagado: true,
+  //     montoPagado: pedidoACobrar.value.total,
+  //     metodoPago: datosPago.metodo,
+  //     efectivoRecibido: datosPago.recibido,
+  //     cambio: datosPago.cambio
+  //   })
+  // } else
+
+
 
 // ── Estados ──
 async function cambiarEstado(id, nuevoEstado) {
@@ -701,6 +963,43 @@ const totalTarjeta = computed(() =>
   pedidosHoy.value.filter(p => p.pagado && p.metodoPago === 'tarjeta')
     .reduce((s, p) => s + (p.montoPagado || p.total), 0)
 )
+
+// ── Pedidos del turno actual ──
+const pedidosTurno = computed(() => {
+  if (!turnoActual.value?.fechaApertura?.toDate) return []
+  const inicio = turnoActual.value.fechaApertura.toDate()
+  return pedidos.value.filter(p =>
+    p.fecha?.toDate && p.fecha.toDate() >= inicio && p.estado !== 'cancelado'
+  )
+})
+
+const ventasEfectivo = computed(() =>
+  pedidosTurno.value.filter(p => p.metodoPago === 'efectivo')
+    .reduce((s, p) => s + (p.montoPagado || 0), 0)
+)
+
+const ventasTarjeta = computed(() =>
+  pedidosTurno.value.filter(p => p.metodoPago === 'tarjeta')
+    .reduce((s, p) => s + (p.montoPagado || 0), 0)
+)
+
+const efectivoEsperado = computed(() =>
+  (turnoActual.value?.fondoInicial || 0) + ventasEfectivo.value
+)
+
+const diferenciaCaja = computed(() =>
+  efectivoContado.value !== null
+    ? efectivoContado.value - efectivoEsperado.value
+    : 0
+)
+
+// Pedidos que impiden cerrar el turno
+const pedidosPendientes = computed(() =>
+  pedidos.value.filter(p =>
+    ['nuevo', 'guardado', 'listo'].includes(p.estado)
+  )
+)
+
 
 // ── Sonido y alerta ──
 function reproducirSonido() {
@@ -728,6 +1027,12 @@ function mostrarAlerta(pedido) {
 }
 
 function cerrarAlerta() {
+// imprime ticket  para pedido web
+ if (ultimoPedido.value) {
+    imprimirTicketCocina(ultimoPedido.value)
+  }
+
+
   hayPedidoNuevo.value = false
   clearInterval(intervaloPestana)
   document.title = `(${contadorActivos.value}) POS Sabor Caribeño`
@@ -787,8 +1092,75 @@ async function cerrarSesion() {
   catch (e) { console.error('Error al cerrar sesión:', e) }
 }
 
+// ── TURNOS ──
+async function abrirTurno() {
+  const fondo = Number(fondoInicial.value) || 0
+  await addDoc(collection(db, 'turnos'), {
+    abierto: true,
+    fondoInicial: fondo,
+    fechaApertura: serverTimestamp(),
+    fechaCierre: null,
+    ventasEfectivo: 0,
+    ventasTarjeta: 0,
+    totalVentas: 0,
+    cantidadPedidos: 0,
+    efectivoContado: null,
+    diferencia: null
+  })
+  modalAbrirTurno.value = false
+  fondoInicial.value = null
+}
+
+function intentarCerrarTurno() {
+  menuAbierto.value = false
+  if (pedidosPendientes.value.length > 0) {
+    modalPendientes.value = true
+    return
+  }
+  efectivoContado.value = null
+  modalCerrarTurno.value = true
+}
+
+async function cerrarTurno() {
+  if (!turnoActual.value) return
+  await updateDoc(doc(db, 'turnos', turnoActual.value.id), {
+    abierto: false,
+    fechaCierre: serverTimestamp(),
+    ventasEfectivo: ventasEfectivo.value,
+    ventasTarjeta: ventasTarjeta.value,
+    totalVentas: ventasEfectivo.value + ventasTarjeta.value,
+    cantidadPedidos: pedidosTurno.value.length,
+    efectivoContado: Number(efectivoContado.value) || 0,
+    diferencia: diferenciaCaja.value
+  })
+  modalCerrarTurno.value = false
+  efectivoContado.value = null
+}
+
+function irAlHistorial() {
+  menuAbierto.value = false
+  router.push('/historial')
+}
+
 // ── Firebase ──
 onMounted(() => {
+
+
+    // ── Escucha el turno abierto ──
+  const qTurno = query(
+    collection(db, 'turnos'),
+    where('abierto', '==', true),
+    limit(1)
+  )
+  unsubTurno = onSnapshot(qTurno, (snap) => {
+    turnoActual.value = snap.empty
+      ? null
+      : { id: snap.docs[0].id, ...snap.docs[0].data() }
+    cargandoTurno.value = false
+    if (!turnoActual.value) modalAbrirTurno.value = true
+    else modalAbrirTurno.value = false
+  })
+
   const q = query(collection(db, 'pedidos'), orderBy('fecha', 'desc'))
   unsubscribe = onSnapshot(q, (snap) => {
     depurarAntiguos(snap.docs)
@@ -811,12 +1183,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe()
+  if (unsubTurno) unsubTurno()
   clearInterval(intervaloPestana)
 })
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Nunito:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Nunito:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
 
 * { box-sizing: border-box; }
 
@@ -920,6 +1293,7 @@ onUnmounted(() => {
 .pos-productos {
   flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   grid-auto-rows: min-content; gap: 12px; overflow-y: auto; align-content: start;
+   
 }
 
 .producto-btn {
@@ -927,11 +1301,11 @@ onUnmounted(() => {
   min-height: 140px; padding: 20px; border-radius: 14px; border: 1px solid #e8ddd0;
   background: white; cursor: pointer; text-align: left;
   transition: border-color 0.1s, transform 0.08s;
-  font-family: 'Nunito', sans-serif;
+ 
 }
 .producto-btn:hover { border-color: #e8621a; }
 .producto-btn:active { transform: scale(0.97); }
-.producto-btn__nombre { font-size: 25px; font-weight: 700; color: #2c1a0e; line-height: 1.25; }
+.producto-btn__nombre { font-size: 25px; font-weight: 700; color: #2c1a0e; line-height: 1.25;  }
 .producto-btn__precio { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: #e8621a; }
 
 .pos-categorias { display: flex; gap: 8px; overflow-x: auto; padding-top: 4px; flex-shrink: 0; }
@@ -944,10 +1318,19 @@ onUnmounted(() => {
 }
 .categoria-btn--activa { background: #e8621a; border-color: #e8621a; color: white; }
 
+
+/*boton precio*/
+.opcion-btn__precio {
+  color: #e8621a;
+  font-weight: 800;
+  margin-left: 10px;
+}
+
 /* ── RESUMEN ── */
 .pos-resumen {
   background: white; border-radius: 18px; border: 1px solid #e8ddd0;
   display: flex; flex-direction: column; overflow: hidden;
+   font-family: 'Inter', sans-serif;
 }
 
 .editando-banner {
@@ -979,8 +1362,8 @@ onUnmounted(() => {
 .resumen__vacio { color: #b09880; font-size: 30px; text-align: center; padding: 32px 0; }
 .resumen__item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; }
 .resumen__item-info { display: flex; flex-direction: column; min-width: 0; }
-.resumen__item-nombre { font-size: 25px; font-weight: 700; color: #2c1a0e; line-height: 1.25; }
-.resumen__item-opcion { font-size: 30px; color: #e8621a; font-weight: 700; }
+.resumen__item-nombre { font-size: 20px; font-weight: 500; color: #2c1a0e; line-height: 1.25;  font-family: 'Inter', sans-serif;  }
+.resumen__item-opcion { font-size: 20px; color: #e8621a; font-weight: 500;  font-family: 'Inter', sans-serif; }
 .resumen__item-ctrl { display: flex; align-items: center; gap: 8px; }
 .resumen__item-ctrl button {
   width: 35px; height: 35px; border-radius: 50%; border: 2px solid #e8621a;
@@ -1030,6 +1413,7 @@ onUnmounted(() => {
 .pedido {
   background: #1a1a1a; border-radius: 16px; padding: 20px;
   border: 1px solid rgba(255,255,255,0.08); position: relative;
+  font-family: 'Inter', sans-serif;  
 }
 .pedido--editable { cursor: pointer; transition: border-color 0.1s; }
 .pedido--editable:hover { border-color: #3a9bd5; }
@@ -1049,14 +1433,15 @@ onUnmounted(() => {
 .pedido__cliente {
   font-size: 22px; font-weight: 700; color: white; margin: 0 0 4px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-family: 'Inter', sans-serif;  
 }
 .pedido__origen {
   font-size: 12px; background: rgba(255,255,255,0.1);
   padding: 3px 10px; border-radius: 100px; color: rgba(255,255,255,0.6);
 }
-.pedido__sucursal { font-size: 17px; color: #e8621a; margin: 0 0 4px; }
+.pedido__sucursal { font-size: 17px; color: #e8621a; margin: 0 0 4px;   font-family: 'Inter', sans-serif;  }
 .pedido__comentario { font-size: 14px; color: rgba(255,255,255,0.5); margin: 6px 0 0; font-style: italic; }
-.pedido__pagado { font-size: 13px; color: #25d366; margin: 6px 0 0; font-weight: 700; }
+.pedido__pagado { font-size: 13px; color: #25d366; margin: 6px 0 0; font-weight: 700;   font-family: 'Inter', sans-serif;  }
 .pedido__pendiente { font-size: 13px; color: #f5a623; margin: 6px 0 0; font-weight: 700; }
 
 .pedido__productos {
@@ -1064,17 +1449,19 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(255,255,255,0.08);
   padding: 12px 0; margin-bottom: 12px;
   display: flex; flex-direction: column; gap: 8px;
+   font-family: 'Inter', sans-serif;
 }
 .pedido__producto {
   display: flex; justify-content: space-between;
   font-size: 16px; color: rgba(255,255,255,0.85);
+  font-family: 'Inter', sans-serif;  
 }
 
 .pedido__footer {
   display: flex; justify-content: space-between; align-items: center;
   gap: 10px; flex-wrap: wrap;
 }
-.pedido__total { font-family: 'Playfair Display', serif; font-size: 22px; color: #f5a623; font-weight: 700; }
+.pedido__total {   font-family: 'Inter', sans-serif;   font-size: 22px; color: #f5a623; font-weight: 700; }
 .pedido__acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .pedido__hint {
@@ -1262,4 +1649,121 @@ onUnmounted(() => {
   .contenido { padding: 10px; }
   .lista-grid { grid-template-columns: 1fr; }
 }
+
+/* ── TURNOS ── */
+.turno-overlay {
+  position: fixed; inset: 0; background: rgba(26,14,6,0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2000; padding: 20px;
+}
+
+.turno-modal {
+  background: white; border-radius: 24px; padding: 32px;
+  width: 100%; max-width: 460px; text-align: center;
+  max-height: 92vh; overflow-y: auto;
+}
+
+.turno-modal__icon { font-size: 56px; margin-bottom: 8px; }
+
+.turno-modal h2 {
+  font-family: 'Playfair Display', serif; font-size: 28px;
+  margin: 0 0 6px; color: #2c1a0e;
+}
+
+.turno-modal__sub { color: #8c6a52; font-size: 15px; margin: 0 0 24px; }
+
+.turno-modal__label {
+  display: block; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: #8c6a52; margin-bottom: 8px; text-align: left;
+}
+
+.turno-modal__input {
+  width: 100%; padding: 18px; border: 2px solid #e8ddd0; border-radius: 12px;
+  font-family: 'Playfair Display', serif; font-size: 32px; font-weight: 700;
+  color: #2c1a0e; outline: none; text-align: center; margin-bottom: 16px;
+}
+.turno-modal__input:focus { border-color: #e8621a; }
+
+.turno-modal__rapidos {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 8px; margin-bottom: 24px;
+}
+
+.tr-btn {
+  padding: 14px; border-radius: 10px; border: 2px solid #e8ddd0;
+  background: white; font-family: 'Nunito', sans-serif;
+  font-size: 15px; font-weight: 700; color: #6b3a1f; cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+.tr-btn:hover { border-color: #e8621a; color: #e8621a; }
+
+.turno-modal__ok {
+  width: 100%; padding: 20px; border-radius: 14px; border: none;
+  background: #25d366; color: white; font-family: 'Nunito', sans-serif;
+  font-size: 18px; font-weight: 800; cursor: pointer; transition: background 0.1s;
+}
+.turno-modal__ok:hover { background: #1fb855; }
+
+.turno-modal__acciones { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+
+.turno-modal__cancelar {
+  padding: 20px; border-radius: 14px; border: 2px solid #e8ddd0;
+  background: white; font-family: 'Nunito', sans-serif;
+  font-size: 16px; font-weight: 700; color: #8c6a52; cursor: pointer;
+}
+
+/* Resumen del cierre */
+.cierre-resumen {
+  background: #fdf8f2; border: 1px solid #f0e6d8; border-radius: 14px;
+  padding: 18px; margin-bottom: 20px; text-align: left;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cierre-fila {
+  display: flex; justify-content: space-between;
+  font-size: 15px; color: #6b3a1f; font-weight: 600;
+}
+.cierre-fila strong { color: #2c1a0e; }
+.cierre-fila--destacado {
+  border-top: 1px solid #e8ddd0; border-bottom: 1px solid #e8ddd0;
+  padding: 10px 0; margin: 4px 0;
+}
+.cierre-fila--destacado strong { color: #e8621a; font-size: 20px; }
+.cierre-fila--total { border-top: 2px solid #e8ddd0; padding-top: 10px; margin-top: 4px; }
+.cierre-fila--total strong { font-family: 'Playfair Display', serif; font-size: 22px; color: #e8621a; }
+
+.cierre-diferencia {
+  padding: 16px; border-radius: 12px; font-size: 17px;
+  font-weight: 800; margin-bottom: 20px;
+}
+.cierre-diferencia--ok    { background: #eaf9ee; color: #1a6b32; border: 1px solid #b7e8c4; }
+.cierre-diferencia--falta { background: #fff0f0; color: #cc0000; border: 1px solid #ffcccc; }
+.cierre-diferencia--sobra { background: #fff8e8; color: #8a5a00; border: 1px solid #f0d9a0; }
+
+/* Pendientes */
+.pendientes-lista {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 24px; max-height: 260px; overflow-y: auto;
+}
+.pendiente-item {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 12px; align-items: center;
+  background: #fdf8f2; border: 1px solid #f0e6d8;
+  border-radius: 10px; padding: 12px 14px; text-align: left;
+}
+.pendiente-item__nombre { font-size: 15px; font-weight: 700; color: #2c1a0e; }
+.pendiente-item__estado { font-size: 13px; color: #8c6a52; }
+.pendiente-item__total { font-size: 15px; font-weight: 800; color: #e8621a; }
+
+/* Drawer nuevos botones */
+.drawer__sin-turno {
+  background: rgba(255,255,255,0.05); border-radius: 14px;
+  padding: 20px; text-align: center; color: rgba(255,255,255,0.4);
+  font-size: 14px; margin: 0;
+}
+.drawer__btn--historial { background: rgba(58,155,213,0.15); color: #7ec8f0; }
+.drawer__btn--historial:hover { background: #3a9bd5; color: white; }
+.drawer__btn--cerrar-turno { background: rgba(245,166,35,0.15); color: #f5a623; }
+.drawer__btn--cerrar-turno:hover { background: #f5a623; color: white; }
+
 </style>

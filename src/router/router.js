@@ -10,6 +10,7 @@ import AcercaDePage from '../components/AcercaDe/AcercaDePage.vue'
 import PanelAdmin from '../components/admin/PanelAdmin.vue'
 import LoginAdmin from '../components/admin/LoginAdmin.vue'
 import POSPage from '../components/POS/POSpage.vue'
+import HistorialTurnos from '../components/POS/HistorialTurnos.vue'
 
 const routes = [
     {path: '/', name: 'Main', component: MainPage},
@@ -17,8 +18,9 @@ const routes = [
     {path: '/acerca', name: 'AcercaDe', component: AcercaDePage},
     {path: '/pos', name: 'POS', component: POSPage},
     {path: '/login', name: 'Login', component: LoginAdmin},
-    {path: '/admin', name: 'Admin', component: PanelAdmin, meta: { requiresAuth: true }
-    }
+    {path: '/admin', name: 'Admin', component: PanelAdmin, meta: { requiresAuth: true }},
+    {path: '/historial', name: 'Historial', component: HistorialTurnos}
+    
 ]
 
 const router = createRouter({
@@ -48,6 +50,20 @@ router.beforeEach(async (to, from, next) => {
   } else {
     next()
   }
+})
+
+// Rutas protegidas
+const rutasProtegidas = ['/pos', '/historial']
+
+router.beforeEach((to, from, next) => {
+  if (!rutasProtegidas.includes(to.path)) return next()
+
+  // Verifica si hay sesión activa
+  const unsub = onAuthStateChanged(auth, (user) => {
+    unsub()
+    if (user) next()
+    else next('/login')
+  })
 })
 
 export default router
