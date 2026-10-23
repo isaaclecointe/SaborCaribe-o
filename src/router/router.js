@@ -9,8 +9,9 @@ import MenuPage from '../components/Menu/MenuPage.vue'
 import AcercaDePage from '../components/AcercaDe/AcercaDePage.vue'
 import PanelAdmin from '../components/admin/PanelAdmin.vue'
 import LoginAdmin from '../components/admin/LoginAdmin.vue'
-import POSPage from '../components/POS/POSpage.vue'
+import POSPage from '../components/POS/POSPage.vue'
 import HistorialTurnos from '../components/POS/HistorialTurnos.vue'
+import CocinaView from '../components/POS/CocinaView.vue'
 
 const routes = [
     {path: '/', name: 'Main', component: MainPage},
@@ -19,8 +20,9 @@ const routes = [
     {path: '/pos', name: 'POS', component: POSPage},
     {path: '/login', name: 'Login', component: LoginAdmin},
     {path: '/admin', name: 'Admin', component: PanelAdmin, meta: { requiresAuth: true }},
-    {path: '/historial', name: 'Historial', component: HistorialTurnos}
-    
+    {path: '/historial', name: 'Historial', component: HistorialTurnos},
+    {path: '/cocina', name: 'Cocina', component: CocinaView}
+
 ]
 
 const router = createRouter({
@@ -53,7 +55,7 @@ router.beforeEach(async (to, from, next) => {
 })
 
 // Rutas protegidas
-const rutasProtegidas = ['/pos', '/historial']
+const rutasProtegidas = ['/pos', '/historial', '/cocina']
 
 router.beforeEach((to, from, next) => {
   if (!rutasProtegidas.includes(to.path)) return next()

@@ -35,7 +35,7 @@
     "categoria": "Tortillas de Harina",
     "imagen": "Tortilla5.jpg",
     "tag": "⭐ Estrella"
-    
+
   },
   {
     "id": 5,
@@ -137,7 +137,47 @@
   "imagen": "Burrito.jpg",
   "tag": "Nuevo",
   "opciones": null
-}
+},
 
+{
+  "id": 15,
+  "nombre": "Gelatina",
+  "descripcion": "Gelatina fresca, el toque dulce perfecto para cerrar tu pedido.",
+  "precio": 10,
+  "categoria": "Postres",
+  "imagen": "Gelatina.jpg",
+  "tag": null,
+  "opciones": null
+},
+{
+  "id": 16,
+  "nombre": "Yogurt Pequeño",
+  "descripcion": "Yogurt cremoso en tamaño personal.",
+  "precio": 6,
+  "categoria": "Postres",
+  "imagen": "Yogurt.jpg",
+  "tag": null,
+  "opciones": null
+},
+{
+  "id": 17,
+  "nombre": "Yogurt Mediano",
+  "descripcion": "Yogurt cremoso en tamaño mediano, ideal para compartir.",
+  "precio": 25,
+  "categoria": "Postres",
+  "imagen": "Yogurt.jpg",
+  "tag": null,
+  "opciones": null
+},
+{
+  "id": 18,
+  "nombre": "Yogurt Grande",
+  "descripcion": "Yogurt cremoso en tamaño grande, para los que quieren más.",
+  "precio": 40,
+  "categoria": "Postres",
+  "imagen": "Yogurt.jpg",
+  "tag": null,
+  "opciones": null
+}
 
 ]
