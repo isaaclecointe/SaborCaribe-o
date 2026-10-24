@@ -9,7 +9,7 @@ import MenuPage from '../components/Menu/MenuPage.vue'
 import AcercaDePage from '../components/AcercaDe/AcercaDePage.vue'
 import PanelAdmin from '../components/admin/PanelAdmin.vue'
 import LoginAdmin from '../components/admin/LoginAdmin.vue'
-import POSPage from '../components/POS/POSpage.vue'
+import POSPage from '../components/POS/POSPage.vue'
 import HistorialTurnos from '../components/POS/HistorialTurnos.vue'
 import CocinaView from '../components/POS/CocinaView.vue'
 
