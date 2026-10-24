@@ -7,7 +7,7 @@
   <div class="login-container">
     <form class="login-card" @submit.prevent="iniciarSesion">
       <h2>Acceso Administrativo</h2>
-      
+
       <div class="field">
         <label>Correo</label>
         <input v-model="email" type="email" placeholder="usuario@correo.com" required />
@@ -32,20 +32,26 @@
 import { ref } from 'vue'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../../firebase'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 const email = ref('')
 const password = ref('')
 const errorMsg = ref('')
 const cargando = ref(false)
 const router = useRouter()
+const route = useRoute()
 
 async function iniciarSesion() {
   errorMsg.value = ''
   cargando.value = true
   try {
     await signInWithEmailAndPassword(auth, email.value, password.value)
-    router.push('/pos')
+    // Si llegamos a /login porque intentábamos entrar a una ruta
+    // protegida (ej. /cocina), el router nos dejó esa ruta guardada en
+    // ?redirect=... — la usamos para regresar ahí. Si no hay nada
+    // guardado (entraste a /login directo), vamos a /pos como antes.
+    const destino = typeof route.query.redirect === 'string' ? route.query.redirect : '/pos'
+    router.push(destino)
   } catch (err) {
     errorMsg.value = 'Correo o contraseña incorrectos.'
   } finally {
@@ -66,7 +72,7 @@ async function iniciarSesion() {
   display: flex;
   justify-content: center;
   align-items: center;
-  
+
 }
 .login-card {
   background: white;

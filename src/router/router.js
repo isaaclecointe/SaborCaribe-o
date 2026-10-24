@@ -9,7 +9,7 @@ import MenuPage from '../components/Menu/MenuPage.vue'
 import AcercaDePage from '../components/AcercaDe/AcercaDePage.vue'
 import PanelAdmin from '../components/admin/PanelAdmin.vue'
 import LoginAdmin from '../components/admin/LoginAdmin.vue'
-import POSPage from '../components/POS/POSPage.vue'
+import POSPage from '../components/POS/POSpage.vue'
 import HistorialTurnos from '../components/POS/HistorialTurnos.vue'
 import CocinaView from '../components/POS/CocinaView.vue'
 
@@ -46,9 +46,11 @@ router.beforeEach(async (to, from, next) => {
   const currentUser = await getCurrentUser()
 
   if (requiresAuth && !currentUser) {
-    next('/login')
+    // Guardamos a dónde intentaba ir (ej. /cocina) para regresarlo ahí
+    // después de iniciar sesión, en vez de mandarlo siempre a /pos.
+    next({ path: '/login', query: { redirect: to.fullPath } })
   } else if (to.path === '/login' && currentUser) {
-    next('/pos')
+    next(typeof to.query.redirect === 'string' ? to.query.redirect : '/pos')
   } else {
     next()
   }
@@ -64,7 +66,9 @@ router.beforeEach((to, from, next) => {
   const unsub = onAuthStateChanged(auth, (user) => {
     unsub()
     if (user) next()
-    else next('/login')
+    // Mismo truco aquí: nos acordamos de la ruta protegida original
+    // (/cocina, /historial, etc.) para regresar ahí después del login.
+    else next({ path: '/login', query: { redirect: to.fullPath } })
   })
 })
 

@@ -247,7 +247,10 @@
             <div class="pedido__productos">
               <div v-for="(prod, i) in pedido.productos" :key="i" class="pedido__producto">
                 <div class="pedido__producto-texto">
-                  <span>{{ prod.cantidad }}x {{ prod.nombre }}</span>
+                  <span>
+                    {{ prod.cantidad }}x {{ prod.nombre }}
+                    <span v-if="prod.cantidadNueva > 0" class="pedido__producto-badge-nuevo">+{{ prod.cantidadNueva }} nuevo</span>
+                  </span>
                   <span v-if="prod.comentario || prod.extras?.length" class="pedido__producto-nota">
                     📝 {{ [prod.extras?.map(nombreExtraConCantidad).join(', '), prod.comentario].filter(Boolean).join(' · ') }}
                   </span>
@@ -751,7 +754,7 @@ import { db, auth } from '../../firebase.js'
 import { siguienteNumeroPedido, reiniciarContadorPedidos } from '../../utils/pedidosNumero.js'
 import {
   collection, addDoc, onSnapshot, doc, updateDoc, orderBy,
-  query, serverTimestamp, writeBatch, getDocs, where, limit
+  query, serverTimestamp, writeBatch, getDocs, getDoc, where, limit
 } from 'firebase/firestore'
 import { useExtras } from '../../composables/useExtras.js'
 import GestionExtras from '../admin/GestionExtras.vue'
@@ -762,6 +765,12 @@ const nombresCortosPos = {
   5:'Quesadillas',
   6: 'Quesadilla Peperonne y Jamon'
 }
+
+// Categorías que el cajero despacha directo (bebidas, postres) y que
+// cocina NO tiene que preparar. Si lo único que se agrega a un pedido
+// ya "listo" es algo de estas categorías, el pedido se queda en "listo"
+// y no vuelve a aparecer en la pantalla de Cocina.
+const CATEGORIAS_SIN_COCINA = ['Frescos', 'Postres']
 // ── Productos fusionados solo para el POS ──
 const fusionesPOS = [
   {
@@ -1166,10 +1175,56 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       || (pedidoEditando.value.pagado ? pedidoEditando.value.total : 0)
     const nuevoPagado = datosPago ? yaPagado + (datosPago.monto || 0) : yaPagado
 
-    await updateDoc(doc(db, 'pedidos', pedidoEditando.value.id), {
+    const refPedidoEditado = doc(db, 'pedidos', pedidoEditando.value.id)
+
+    // Leemos el estado y los productos directo de Firestore (no el
+    // caché local) justo antes de decidir si hay que regresarlo a
+    // "nuevo". ¿Por qué? Si cocina acaba de marcar el pedido como
+    // "listo" desde otra tablet, ese cambio puede tardar unos segundos
+    // en llegarle al listener de este dispositivo. Si decidiéramos con
+    // el dato viejo en caché, podríamos pensar que seguía en "nuevo" y
+    // nunca regresarlo a la cola de cocina con lo que se acaba de
+    // agregar.
+    let estadoActual = pedidoEditando.value.estado
+    let productosAntes = null
+    try {
+      const snapActual = await getDoc(refPedidoEditado)
+      if (snapActual.exists()) {
+        estadoActual = snapActual.data().estado
+        productosAntes = snapActual.data().productos || []
+      }
+    } catch (e) {
+      console.warn('No se pudo confirmar el estado más reciente, usando el valor en caché:', e)
+    }
+
+    // Si el pedido ya estaba "listo" y le estamos agregando algo, marcamos
+    // cuánto de cada producto es nuevo (lo que no había antes), para que
+    // en Cocina quede claro qué falta por preparar — no todo el pedido
+    // otra vez, solo lo que se acaba de agregar. Las bebidas/postres
+    // (CATEGORIAS_SIN_COCINA) no se marcan: esas las despacha el cajero
+    // directo, cocina no tiene nada que hacer con ellas.
+    const claveLinea = p => `${p.nombre}||${p.opcion || ''}`
+    let productosParaGuardar = productos
+    let hayAlgoQuePrepararNuevo = false
+    if (estadoActual === 'listo' && productosAntes) {
+      const cantidadesAntes = {}
+      productosAntes.forEach(p => {
+        const k = claveLinea(p)
+        cantidadesAntes[k] = (cantidadesAntes[k] || 0) + (p.cantidad || 0)
+      })
+      productosParaGuardar = productos.map(p => {
+        const antes = cantidadesAntes[claveLinea(p)] || 0
+        const nuevos = Math.max(0, p.cantidad - antes)
+        if (nuevos === 0 || CATEGORIAS_SIN_COCINA.includes(p.categoria)) return p
+        hayAlgoQuePrepararNuevo = true
+        return { ...p, cantidadNueva: nuevos }
+      })
+    }
+
+    await updateDoc(refPedidoEditado, {
       cliente: nombre,
       tipoOrden: tipoOrden || pedidoEditando.value.tipoOrden,
-      productos,
+      productos: productosParaGuardar,
       total: totalOrden.value,
       montoPagado: nuevoPagado,
       pagado: nuevoPagado >= totalOrden.value,
@@ -1185,11 +1240,20 @@ totalTarjeta: datosPago
   : pedidoEditando.value.totalTarjeta ?? null,
       ...(datosPago
   ? {
-      estado: (nuevoPagado >= totalOrden.value && pedidoEditando.value.estado === 'listo')
+      estado: (nuevoPagado >= totalOrden.value && estadoActual === 'listo')
         ? 'entregado'
-        : (pedidoEditando.value.estado === 'listo' ? 'listo' : 'nuevo')
+        : (estadoActual === 'listo' ? 'listo' : 'nuevo')
     }
-  : {})
+  // Edición sin pago (ej. el cliente pide agregar algo más a un pedido
+  // ya guardado): si cocina ya lo había marcado "listo" Y lo que se
+  // agregó incluye algo que sí hay que preparar, lo regresamos a
+  // "nuevo" para que le llegue a Cocina otra vez. Si lo único nuevo
+  // fue bebida/postre (hayAlgoQuePrepararNuevo queda en false), el
+  // cajero ya lo despachó directo — el pedido se queda en "listo" y no
+  // vuelve a aparecer en Cocina. Si no estaba "listo" (seguía en
+  // "guardado" o "nuevo"), lo dejamos como está — ya lo está viendo
+  // cocina de todos modos.
+  : (estadoActual === 'listo' && hayAlgoQuePrepararNuevo ? { estado: 'nuevo' } : {}))
     })
   } else {
     // Crear pedido nuevo
@@ -1542,6 +1606,18 @@ async function confirmarDivision() {
 
 // ── Estados ──
 async function cambiarEstado(id, nuevoEstado) {
+  // Si se marca como "listo" desde aquí (Activos), limpiamos también las
+  // marcas de "cantidadNueva" de los productos — igual que hace Cocina —
+  // para que una futura edición solo resalte lo que sea nuevo desde ahora.
+  if (nuevoEstado === 'listo') {
+    const pedido = pedidos.value.find(p => p.id === id)
+    const productosLimpios = (pedido?.productos || []).map(p => {
+      const { cantidadNueva, ...resto } = p
+      return resto
+    })
+    await updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado, productos: productosLimpios })
+    return
+  }
   await updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado })
 }
 
@@ -2146,6 +2222,15 @@ onUnmounted(() => {
   font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.92);
 }
 .pedido__producto-nota { font-size: 12px; font-weight: 600; color: #f5a623; }
+.pedido__producto-badge-nuevo {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10.5px; font-weight: 800; color: #3a9bd5;
+  background: rgba(58,155,213,0.18);
+  padding: 2px 8px; border-radius: 999px;
+  vertical-align: middle;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
 .pedido__producto-precio { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.92); flex-shrink: 0; margin-left: 10px; }
 
 .pedido__footer {

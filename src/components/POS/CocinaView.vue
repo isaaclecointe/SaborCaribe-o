@@ -26,7 +26,10 @@
         @touchend="onTouchEnd(pedido.id)"
       >
         <div class="ticket__head">
-          <span class="ticket__cliente">{{ pedido.cliente }}</span>
+          <div class="ticket__head-izq">
+            <span class="ticket__cliente">{{ pedido.cliente }}</span>
+            <span v-if="tieneAlgoNuevo(pedido)" class="ticket__badge-nuevo">🆕 Se agregó algo</span>
+          </div>
           <span class="ticket__tipo">{{ pedido.tipoOrden === 'local' ? 'Comer acá' : 'Para llevar' }}</span>
         </div>
 
@@ -35,8 +38,16 @@
         </span>
 
         <div class="ticket__productos">
-          <div v-for="(prod, i) in pedido.productos" :key="i" class="ticket__producto">
-            <span class="ticket__producto-nombre">{{ prod.cantidad }}x {{ prod.nombre }}</span>
+          <div
+            v-for="(prod, i) in pedido.productos"
+            :key="i"
+            class="ticket__producto"
+            :class="{ 'ticket__producto--nuevo': prod.cantidadNueva > 0 }"
+          >
+            <span class="ticket__producto-nombre">
+              {{ prod.cantidad }}x {{ prod.nombre }}
+              <span v-if="prod.cantidadNueva > 0" class="producto-badge-nuevo">+{{ prod.cantidadNueva }} nuevo</span>
+            </span>
             <span v-if="notaProducto(prod)" class="ticket__producto-nota">📝 {{ notaProducto(prod) }}</span>
           </div>
         </div>
@@ -109,9 +120,24 @@ function notaProducto(prod) {
   return partes.join(' · ')
 }
 
-// Misma acción que el botón "Listo" de Activos: solo cambia el estado en Firestore
+// ¿Este pedido tiene algo recién agregado después de que ya se había
+// marcado "listo" una vez? (ver cantidadNueva, que se calcula en POS.vue
+// al editar un pedido que cocina ya había terminado)
+function tieneAlgoNuevo(pedido) {
+  return (pedido.productos || []).some(p => p.cantidadNueva > 0)
+}
+
+// Misma acción que el botón "Listo" de Activos: cambia el estado en
+// Firestore y, de paso, limpia las marcas de "cantidadNueva" — así, si
+// más tarde se vuelve a agregar algo a este mismo pedido, solo se
+// resalta lo que sea nuevo DESDE AHORA, no lo de la vez anterior.
 async function marcarListo(id) {
-  await updateDoc(doc(db, 'pedidos', id), { estado: 'listo' })
+  const pedido = pedidos.value.find(p => p.id === id)
+  const productosLimpios = (pedido?.productos || []).map(p => {
+    const { cantidadNueva, ...resto } = p
+    return resto
+  })
+  await updateDoc(doc(db, 'pedidos', id), { estado: 'listo', productos: productosLimpios })
 }
 
 // ── Deslizar hacia arriba para marcar listo (además del botón) ──
@@ -181,10 +207,15 @@ function onTouchEnd(id) {
 .ticket--critico { border-left-color: #cc0000; }
 
 .ticket__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ticket__head-izq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ticket__cliente { font-size: 18px; font-weight: 800; color: #2c1a0e; }
 .ticket__tipo {
   font-size: 11.5px; font-weight: 700; color: #8a7362;
   background: #f7efe6; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+}
+.ticket__badge-nuevo {
+  font-size: 11px; font-weight: 800; color: white;
+  background: #3a9bd5; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
 }
 
 .ticket__tiempo {
@@ -196,9 +227,22 @@ function onTouchEnd(id) {
 .ticket__tiempo--critico { background: rgba(204,0,0,0.1); color: #cc0000; }
 
 .ticket__productos { display: flex; flex-direction: column; gap: 8px; }
-.ticket__producto { display: flex; flex-direction: column; gap: 2px; }
+.ticket__producto { display: flex; flex-direction: column; gap: 2px; border-radius: 8px; }
+.ticket__producto--nuevo {
+  background: rgba(58,155,213,0.08);
+  padding: 6px 8px;
+  margin: -6px -8px;
+}
 .ticket__producto-nombre { font-size: 16px; font-weight: 700; color: #2c1a0e; }
 .ticket__producto-nota { font-size: 13px; font-weight: 600; color: #e8621a; }
+.producto-badge-nuevo {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px; font-weight: 800; color: #3a9bd5;
+  background: rgba(58,155,213,0.14);
+  padding: 2px 8px; border-radius: 999px;
+  vertical-align: middle;
+}
 
 .ticket__comentario {
   font-size: 13px; font-weight: 600; color: #8a7362; margin: 0;
