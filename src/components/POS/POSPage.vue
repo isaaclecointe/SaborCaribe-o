@@ -181,13 +181,13 @@
           </div>
 
           <div class="resumen__acciones">
-            <button class="btn btn--guardar" :disabled="!orden.length" @click="pedirNombre('guardar')">
-              {{ pedidoEditando ? 'Actualizar' : 'Guardar' }}
+            <button class="btn btn--guardar" :disabled="!orden.length || guardando" @click="pedirNombre('guardar')">
+              {{ guardando ? 'Guardando...' : (pedidoEditando ? 'Actualizar' : 'Guardar') }}
             </button>
-            <button class="btn btn--comer" :disabled="!orden.length" @click="pedirNombre('local')">
+            <button class="btn btn--comer" :disabled="!orden.length || guardando" @click="pedirNombre('local')">
               Comer acá
             </button>
-            <button class="btn btn--cobrar" :disabled="!orden.length" @click="pedirNombre('cobrar')">
+            <button class="btn btn--cobrar" :disabled="!orden.length || guardando" @click="pedirNombre('cobrar')">
               {{ pedidoEditando?.pagado && saldoPendiente > 0 ? `Cobrar Q${saldoPendiente}` : 'Cobrar' }}
             </button>
           </div>
@@ -211,6 +211,7 @@
           >
             <div class="pedido__header">
               <span class="pedido__estado-badge">{{ etiquetaEstado(pedido.estado) }}</span>
+              <span v-if="!esDelTurnoActual(pedido)" class="pedido__previo">De antes del turno</span>
               <span class="pedido__tiempo">{{ formatTiempo(pedido.fecha) }}</span>
             </div>
 
@@ -266,8 +267,18 @@
                 </span>
               </div>
               <div class="pedido__acciones" @click.stop>
+                <!-- Si el pedido tiene algo que cocina prepara, solo cocina lo
+                     marca listo. Caja ve "En cocina" y, si lo toca, un aviso. -->
                 <button
-                  v-if="pedido.estado === 'nuevo' || pedido.estado === 'guardado'"
+                  v-if="(pedido.estado === 'nuevo' || pedido.estado === 'guardado') && necesitaCocina(pedido)"
+                  class="accion-btn accion-btn--en-cocina"
+                  @click="pedidoEnCocina = pedido"
+                >
+                  👨‍🍳 En cocina
+                </button>
+                <!-- Solo bebidas/postres: cocina no hace nada, caja lo marca directo -->
+                <button
+                  v-else-if="pedido.estado === 'nuevo' || pedido.estado === 'guardado'"
                   class="accion-btn accion-btn--listo"
                   @click="cambiarEstado(pedido.id, 'listo')"
                 >
@@ -293,7 +304,7 @@
                 <button
                   v-if="pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'"
                   class="accion-btn accion-btn--cancelar"
-                  @click="cambiarEstado(pedido.id, 'cancelado')"
+                  @click="pedidoACancelar = pedido"
                 >
                   ❌ Cancelar
                 </button>
@@ -332,7 +343,7 @@
       </div>
     </div>
 
-    <button class="nombre-modal__ok" @click="confirmarNombre">Continuar</button>
+    <button class="nombre-modal__ok" :disabled="guardando" @click="confirmarNombre">Continuar</button>
   </div>
 </div>
 
@@ -472,8 +483,8 @@
               🧾 Dividir cuenta
            </button>
 
-       <button class="cobro__confirmar" :disabled="!puedeConfirmar" @click="confirmarCobro">
-         Confirmar cobro
+       <button class="cobro__confirmar" :disabled="!puedeConfirmar || guardando" @click="confirmarCobro">
+         {{ guardando ? 'Cobrando...' : 'Confirmar cobro' }}
        </button>
 
         </div>
@@ -598,10 +609,10 @@
       </div>
       <button
         class="dividir__confirmar"
-        :disabled="!pagosRealizados.length"
+        :disabled="!pagosRealizados.length || guardando"
         @click="confirmarDivision"
       >
-        Finalizar
+        {{ guardando ? 'Guardando...' : 'Finalizar' }}
       </button>
     </div>
 
@@ -621,6 +632,51 @@
           </div>
           <button class="alerta-btn" @click="cerrarAlerta">Aceptar y revisar</button>
         </div>
+      </div>
+    </Transition>
+
+    <!-- ── AVISO: PEDIDO TODAVÍA EN COCINA ── -->
+    <div v-if="pedidoEnCocina" class="cobro-overlay" @click.self="pedidoEnCocina = null">
+      <div class="confirmar-modal">
+        <h2 class="confirmar-modal__titulo">Todavía en preparación</h2>
+        <p class="confirmar-modal__texto">
+          El pedido de <strong>{{ pedidoEnCocina.cliente }}</strong> sigue en cocina.
+          Se marca como listo desde la pantalla de Cocina cuando lo terminen.
+        </p>
+        <button class="confirmar-modal__principal" @click="pedidoEnCocina = null">
+          Entendido
+        </button>
+        <!-- Salida de emergencia: por si la tablet de cocina falla o se apaga -->
+        <button class="confirmar-modal__secundario" @click="forzarListo">
+          Marcar listo de todos modos
+        </button>
+      </div>
+    </div>
+
+    <!-- ── CONFIRMAR CANCELACIÓN ── -->
+    <div v-if="pedidoACancelar" class="cobro-overlay" @click.self="pedidoACancelar = null">
+      <div class="confirmar-modal">
+        <h2 class="confirmar-modal__titulo">¿Cancelar este pedido?</h2>
+        <p class="confirmar-modal__texto">
+          El pedido de <strong>{{ pedidoACancelar.cliente }}</strong> se va a cancelar
+          y se quitará de Cocina.
+        </p>
+        <button class="confirmar-modal__principal" @click="pedidoACancelar = null">
+          No, mantener pedido
+        </button>
+        <button class="confirmar-modal__peligro" @click="confirmarCancelacion">
+          Sí, cancelar pedido
+        </button>
+      </div>
+    </div>
+
+    <!-- ── AVISO DE ERROR AL GUARDAR ── -->
+    <!-- Se queda en pantalla hasta que el cajero lo cierre, para que no se
+         pierda en medio de la carrera si un pedido no se pudo guardar. -->
+    <Transition name="modal">
+      <div v-if="avisoError" class="aviso-error" role="alert">
+        <span class="aviso-error__texto">{{ avisoError }}</span>
+        <button class="aviso-error__x" @click="avisoError = ''">✕</button>
       </div>
     </Transition>
 
@@ -751,9 +807,9 @@ import { useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import productosData from '../../assets/data/productos.json'
 import { db, auth } from '../../firebase.js'
-import { siguienteNumeroPedido, reiniciarContadorPedidos } from '../../utils/pedidosNumero.js'
+import { reiniciarContadorPedidos, registrarNumeroUsado } from '../../utils/pedidosNumero.js'
 import {
-  collection, addDoc, onSnapshot, doc, updateDoc, orderBy,
+  collection, onSnapshot, doc, updateDoc, setDoc, orderBy,
   query, serverTimestamp, writeBatch, getDocs, getDoc, where, limit
 } from 'firebase/firestore'
 import { useExtras } from '../../composables/useExtras.js'
@@ -954,7 +1010,7 @@ const enProceso = ['nuevo', 'guardado', 'listo']
 
 const contadorActivos = computed(() =>
   pedidos.value.filter(p =>
-    esDelTurnoActual(p) && (
+    esVisibleEnCurso(p) && (
       (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) ||
       (p.tipoOrden === 'local' && ['nuevo', 'guardado'].includes(p.estado))
     )
@@ -963,7 +1019,7 @@ const contadorActivos = computed(() =>
 
 const contadorLocal = computed(() =>
   pedidos.value.filter(p =>
-    esDelTurnoActual(p) && enProceso.includes(p.estado) && p.tipoOrden === 'local'
+    esVisibleEnCurso(p) && enProceso.includes(p.estado) && p.tipoOrden === 'local'
   ).length
 )
 
@@ -976,22 +1032,47 @@ const tabs = computed(() => [
 ])
 
 // ── Solo pedidos del turno actual ──
+// Un pedido es del turno si se creó después de la apertura, o si se
+// guardó/cobró en este turno (turnoId). Lo segundo cubre, por ejemplo, un
+// pedido web de la noche anterior que se atiende y se cobra hoy: así su
+// dinero sí cuenta en el cierre de este turno.
 function esDelTurnoActual(p) {
-  if (!turnoActual.value?.fechaApertura?.toDate) return false
+  if (!turnoActual.value) return false
+  if (p.turnoId && p.turnoId === turnoActual.value.id) return true
+  if (!turnoActual.value.fechaApertura?.toDate) return false
   if (!p.fecha?.toDate) return false
   return p.fecha.toDate() >= turnoActual.value.fechaApertura.toDate()
 }
 
+// Activos y Comer acá muestran también los pendientes de antes del turno.
+// Un pedido sin atender nunca debe quedar invisible en el POS (antes solo
+// aparecía en Cocina y bloqueaba el cierre de turno sin poder verlo).
+function esVisibleEnCurso(p) {
+  return esDelTurnoActual(p) || enProceso.includes(p.estado)
+}
+
+// Del más viejo al más nuevo (igual que Cocina): el pedido #001 se queda
+// primero y los nuevos se van agregando después. La consulta de Firestore
+// trae los pedidos del más nuevo al más viejo, por eso hay que reordenar.
+function porFechaAscendente(a, b) {
+  const ta = a.fecha?.toDate ? a.fecha.toDate().getTime() : Number.MAX_SAFE_INTEGER
+  const tb = b.fecha?.toDate ? b.fecha.toDate().getTime() : Number.MAX_SAFE_INTEGER
+  return ta - tb
+}
+
 const pedidosVista = computed(() => {
- const delTurno = pedidos.value.filter(esDelTurnoActual)
+  const delTurno = pedidos.value.filter(esDelTurnoActual)
+  const enCurso = pedidos.value.filter(esVisibleEnCurso)
 
   if (tabActivo.value === 'activos')
-    return delTurno.filter(p =>
+    return enCurso.filter(p =>
       (p.tipoOrden !== 'local' && enProceso.includes(p.estado)) ||
       (p.tipoOrden === 'local' && ['nuevo', 'guardado'].includes(p.estado))
-    )
+    ).sort(porFechaAscendente)
   if (tabActivo.value === 'local')
-    return delTurno.filter(p => enProceso.includes(p.estado) && p.tipoOrden === 'local')
+    return enCurso
+      .filter(p => enProceso.includes(p.estado) && p.tipoOrden === 'local')
+      .sort(porFechaAscendente)
   if (tabActivo.value === 'entregados')
     return delTurno.filter(p => p.estado === 'entregado')
   if (tabActivo.value === 'cancelados')
@@ -1090,26 +1171,94 @@ function cerrarComentario() {
   modalComentario.value = false
 }
 
+// ── Candado de guardado y avisos de error ──
+// Mientras se guarda o se cobra, los botones quedan desactivados: así
+// un toque extra no vuelve a ejecutar el guardado (y no hay pedidos
+// dobles). Si algo falla, se muestra un aviso en vez de fallar en silencio.
+const guardando = ref(false)
+const avisoError = ref('')
+
+function mostrarAviso(mensaje) {
+  avisoError.value = mensaje
+}
+
+async function conCandado(accion) {
+  if (guardando.value) return
+  guardando.value = true
+  try {
+    await accion()
+  } catch (e) {
+    console.error('Error al guardar:', e)
+    mostrarAviso('No se pudo guardar el pedido. Revisa la conexión e intenta otra vez.')
+  } finally {
+    guardando.value = false
+  }
+}
+
+// Las escrituras ya no se esperan (ver persistirPedido). Si el servidor
+// llegara a rechazar una (no pasa por falta de internet: en ese caso
+// Firestore la deja en cola y la manda sola después), avisamos con el
+// nombre del pedido para que el cajero lo vuelva a ingresar.
+function vigilarEscritura(promesa, nombre) {
+  promesa.catch(e => {
+    console.error('El servidor rechazó un guardado:', e)
+    mostrarAviso(`El pedido "${nombre}" no se pudo guardar. Vuelve a ingresarlo.`)
+  })
+}
+
+// Espera una promesa como máximo `ms` milisegundos.
+function conTiempoLimite(promesa, ms) {
+  return Promise.race([
+    promesa,
+    new Promise((_, rechazar) => setTimeout(() => rechazar(new Error('tiempo agotado')), ms))
+  ])
+}
+
+// ── Número de orden ──
+// Solo la tablet de caja crea pedidos del POS, así que el número se
+// calcula aquí mismo, sin transacción y sin esperar internet: el mayor
+// número usado en este turno + 1. ultimoNumeroLocal evita repetir número
+// si se crean dos pedidos seguidos antes de que el primero aparezca en
+// la lista. (Los pedidos web siguen usando el contador de Firestore, y
+// aquí le avisamos de cada número usado; ver registrarNumeroUsado.)
+const ultimoNumeroLocal = ref(0)
+
+function proximoNumeroPedido() {
+  const inicio = turnoActual.value?.fechaApertura?.toDate?.()
+  const maxTurno = inicio
+    ? pedidos.value.reduce((max, p) => {
+        const creadoEnTurno = p.fecha?.toDate && p.fecha.toDate() >= inicio
+        return creadoEnTurno ? Math.max(max, Number(p.numero) || 0) : max
+      }, 0)
+    : 0
+  return Math.max(maxTurno, ultimoNumeroLocal.value) + 1
+}
+
+function tomarNumeroPedido() {
+  const n = proximoNumeroPedido()
+  ultimoNumeroLocal.value = n
+  return n
+}
+
 // ── Nombre por defecto ──
-// Usa pedidosTurno (no pedidosHoy): el número real que se guarda
-// ahora se reinicia por turno, así que la sugerencia tiene que
-// contar los pedidos del turno actual, no los de todo el día.
+// Usa el mismo cálculo que el número real, así la sugerencia coincide.
 function nombrePorDefecto() {
-  const n = pedidosTurno.value.length + 1
-  return `Orden #${String(n).padStart(3, '0')}`
+  return `Orden #${String(proximoNumeroPedido()).padStart(3, '0')}`
 }
 
 // ── Nombre del pedido ──
 async function pedirNombre(accion) {
+  if (guardando.value) return
   accionPendiente.value = accion
 
   // Si ya tiene nombre (pedido existente), no preguntar de nuevo
   if (pedidoEditando.value?.cliente) {
     const nombre = pedidoEditando.value.cliente
     if (accion === 'guardar') {
-      persistirPedido('guardado', pedidoEditando.value.tipoOrden || 'llevar', nombre)
+      const tipo = pedidoEditando.value.tipoOrden || 'llevar'
+      conCandado(() => persistirPedido('guardado', tipo, nombre))
     } else if (accion === 'local') {
-      persistirPedido('guardado', 'local', nombre)
+      conCandado(() => persistirPedido('guardado', 'local', nombre))
     } else if (accion === 'cobrar') {
       abrirCobro(nombre)
     }
@@ -1140,14 +1289,15 @@ function cerrarModalNombre() {
 }
 
 function confirmarNombre() {
+  if (guardando.value) return
   modalNombre.value = false
   liberarScrollModalNombre()
   const nombre = nombrePedido.value.trim() || nombrePorDefecto()
 
   if (accionPendiente.value === 'guardar') {
-    persistirPedido('guardado', 'llevar', nombre)
+    conCandado(() => persistirPedido('guardado', 'llevar', nombre))
   } else if (accionPendiente.value === 'local') {
-    persistirPedido('guardado', 'local', nombre)
+    conCandado(() => persistirPedido('guardado', 'local', nombre))
   } else if (accionPendiente.value === 'cobrar') {
     abrirCobro(nombre)
   }
@@ -1185,10 +1335,13 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
     // el dato viejo en caché, podríamos pensar que seguía en "nuevo" y
     // nunca regresarlo a la cola de cocina con lo que se acaba de
     // agregar.
+    // Esperamos esa lectura como máximo 1.5 s: si el internet está lento,
+    // seguimos con lo que ya tenemos en la tablet en vez de dejar al
+    // cajero esperando.
     let estadoActual = pedidoEditando.value.estado
-    let productosAntes = null
+    let productosAntes = pedidoEditando.value.productos || []
     try {
-      const snapActual = await getDoc(refPedidoEditado)
+      const snapActual = await conTiempoLimite(getDoc(refPedidoEditado), 1500)
       if (snapActual.exists()) {
         estadoActual = snapActual.data().estado
         productosAntes = snapActual.data().productos || []
@@ -1221,9 +1374,12 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       })
     }
 
-    await updateDoc(refPedidoEditado, {
+    // Sin await: Firestore aplica el cambio en esta tablet al instante y
+    // lo manda al servidor por detrás (si no hay internet, lo deja en cola).
+    vigilarEscritura(updateDoc(refPedidoEditado, {
       cliente: nombre,
       tipoOrden: tipoOrden || pedidoEditando.value.tipoOrden,
+      turnoId: turnoActual.value?.id || pedidoEditando.value.turnoId || null,
       productos: productosParaGuardar,
       total: totalOrden.value,
       montoPagado: nuevoPagado,
@@ -1254,13 +1410,18 @@ totalTarjeta: datosPago
   // "guardado" o "nuevo"), lo dejamos como está — ya lo está viendo
   // cocina de todos modos.
   : (estadoActual === 'listo' && hayAlgoQuePrepararNuevo ? { estado: 'nuevo' } : {}))
-    })
+    }), nombre)
   } else {
-    // Crear pedido nuevo
-    const numeroPedido = await siguienteNumeroPedido()
-    await addDoc(collection(db, 'pedidos'), {
+    // Crear pedido nuevo — también sin esperar al servidor. El número se
+    // calcula aquí (ver tomarNumeroPedido) y luego se le avisa al contador
+    // de Firestore en segundo plano, para que los pedidos web sigan la
+    // misma secuencia.
+    const numeroPedido = tomarNumeroPedido()
+    const refNuevo = doc(collection(db, 'pedidos'))
+    vigilarEscritura(setDoc(refNuevo, {
       cliente: nombre,
       numero: numeroPedido,
+      turnoId: turnoActual.value?.id || null,
       origen: 'pos',
       sucursal: 'Mostrador',
       sucursalId: 'pos',
@@ -1278,7 +1439,8 @@ totalTarjeta: datosPago
       totalEfectivo: datosPago?.totalEfectivo ?? null,
       totalTarjeta: datosPago?.totalTarjeta ?? null,
       fecha: serverTimestamp()
-    })
+    }), nombre)
+    registrarNumeroUsado(numeroPedido)
   }
 
 //     // Imprime el ticket de cocina
@@ -1442,6 +1604,7 @@ function cerrarCobro() {
 }
 
 async function confirmarCobro() {
+  if (guardando.value) return
   const datosPago = {
     metodo: metodoPago.value,
     monto: montoACobrar.value,
@@ -1453,15 +1616,17 @@ async function confirmarCobro() {
  // Restaura el id por si algo lo borró
   if (cobroPedidoId.value) pedidoEditandoId.value = cobroPedidoId.value
 
-  {
+  await conCandado(async () => {
     await persistirPedido(
       'nuevo',
       pedidoEditando.value?.tipoOrden || 'llevar',
       nombreParaCobro.value,
       datosPago
     )
-  }
-  cerrarCobro()
+    // Solo cerramos el modal si se guardó bien; si falló, se queda
+    // abierto con el aviso de error para que el cajero reintente.
+    cerrarCobro()
+  })
 }
 
 function abrirDividir() {
@@ -1555,6 +1720,7 @@ function quitarPago(index) {
 
 // Confirma toda la división y guarda en Firebase
 async function confirmarDivision() {
+  if (guardando.value) return
   if (faltaPorCobrar.value > 0) {
     if (!confirm(`Faltan Q${faltaPorCobrar.value} por cobrar. ¿Guardar como pago parcial?`)) {
       return
@@ -1579,15 +1745,16 @@ async function confirmarDivision() {
 
   if (cobroPedidoId.value) pedidoEditandoId.value = cobroPedidoId.value
 
-  await persistirPedido(
-    'nuevo',
-    pedidoEditando.value?.tipoOrden || 'llevar',
-    nombreParaCobro.value,
-    datosPago
-  )
-
-  cerrarDividir()
-  cerrarCobro()
+  await conCandado(async () => {
+    await persistirPedido(
+      'nuevo',
+      pedidoEditando.value?.tipoOrden || 'llevar',
+      nombreParaCobro.value,
+      datosPago
+    )
+    cerrarDividir()
+    cerrarCobro()
+  })
 }
 
 
@@ -1604,6 +1771,27 @@ async function confirmarDivision() {
 
 
 
+// ── Protección contra toques accidentales en Activos ──
+// ¿El pedido tiene algo que cocina tiene que preparar? (no solo
+// bebidas/postres). Si un producto no trae categoría (pedidos viejos),
+// lo tratamos como de cocina por seguridad.
+function necesitaCocina(pedido) {
+  return (pedido.productos || []).some(p => !CATEGORIAS_SIN_COCINA.includes(p.categoria))
+}
+
+const pedidoEnCocina = ref(null)   // pedido del aviso "todavía en preparación"
+const pedidoACancelar = ref(null)  // pedido esperando confirmación para cancelar
+
+function forzarListo() {
+  if (pedidoEnCocina.value) cambiarEstado(pedidoEnCocina.value.id, 'listo')
+  pedidoEnCocina.value = null
+}
+
+function confirmarCancelacion() {
+  if (pedidoACancelar.value) cambiarEstado(pedidoACancelar.value.id, 'cancelado')
+  pedidoACancelar.value = null
+}
+
 // ── Estados ──
 async function cambiarEstado(id, nuevoEstado) {
   // Si se marca como "listo" desde aquí (Activos), limpiamos también las
@@ -1615,10 +1803,11 @@ async function cambiarEstado(id, nuevoEstado) {
       const { cantidadNueva, ...resto } = p
       return resto
     })
-    await updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado, productos: productosLimpios })
+    vigilarEscritura(updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado, productos: productosLimpios }), pedido?.cliente || 'pedido')
     return
   }
-  await updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado })
+  const pedido = pedidos.value.find(p => p.id === id)
+  vigilarEscritura(updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado }), pedido?.cliente || 'pedido')
 }
 
 // ── Turno ──
@@ -1640,13 +1829,9 @@ const totalTarjeta = computed(() =>
 )
 
 // ── Pedidos del turno actual ──
-const pedidosTurno = computed(() => {
-  if (!turnoActual.value?.fechaApertura?.toDate) return []
-  const inicio = turnoActual.value.fechaApertura.toDate()
-  return pedidos.value.filter(p =>
-    p.fecha?.toDate && p.fecha.toDate() >= inicio && p.estado !== 'cancelado'
-  )
-})
+const pedidosTurno = computed(() =>
+  pedidos.value.filter(p => esDelTurnoActual(p) && p.estado !== 'cancelado')
+)
 
 const ventasEfectivo = computed(() =>
   pedidosTurno.value.reduce((s, p) => {
@@ -1681,17 +1866,28 @@ const pedidosPendientes = computed(() =>
 
 
 // ── Sonido y alerta ──
+// Un solo AudioContext para toda la sesión: el iPad limita cuántos se
+// pueden crear, y antes se creaba uno nuevo por cada alerta (después de
+// varias, el sonido dejaba de funcionar).
+let audioCtx = null
+
 function reproducirSonido() {
-  const ctx = new AudioContext()
-  const osc = ctx.createOscillator()
-  const gain = ctx.createGain()
-  osc.connect(gain); gain.connect(ctx.destination)
-  osc.frequency.setValueAtTime(800, ctx.currentTime)
-  osc.frequency.setValueAtTime(600, ctx.currentTime + 0.1)
-  osc.frequency.setValueAtTime(800, ctx.currentTime + 0.2)
-  gain.gain.setValueAtTime(0.3, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
-  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    const ctx = audioCtx
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.frequency.setValueAtTime(800, ctx.currentTime)
+    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.1)
+    osc.frequency.setValueAtTime(800, ctx.currentTime + 0.2)
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4)
+  } catch (e) {
+    console.warn('No se pudo reproducir el sonido de alerta:', e)
+  }
 }
 
 function mostrarAlerta(pedido) {
@@ -1755,17 +1951,18 @@ async function limpiarDocumentosVacios() {
   }
 }
 
-async function depurarAntiguos(docs) {
+// Borra pedidos entregados/cancelados de hace más de 24 h. Los resúmenes
+// de cada turno (colección "turnos") no se tocan.
+function depurarAntiguos() {
   const limite = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const viejos = pedidos.value.filter(p =>
+    p.fecha?.toDate && p.fecha.toDate() < limite && ['entregado', 'cancelado'].includes(p.estado)
+  )
+  if (!viejos.length) return
   const batch = writeBatch(db)
-  let hay = false
-  docs.forEach(d => {
-    const p = d.data()
-    if (p.fecha?.toDate && p.fecha.toDate() < limite && ['entregado','cancelado'].includes(p.estado)) {
-      batch.delete(d.ref); hay = true
-    }
-  })
-  if (hay) await batch.commit()
+  // Un batch de Firestore acepta hasta 500 operaciones
+  viejos.slice(0, 450).forEach(p => batch.delete(doc(db, 'pedidos', p.id)))
+  batch.commit().catch(e => console.warn('No se pudieron limpiar pedidos viejos:', e))
 }
 
 // ── Helpers ──
@@ -1794,9 +1991,18 @@ async function cerrarSesion() {
 }
 
 // ── TURNOS ──
-async function abrirTurno() {
+// Id del turno que se está abriendo. Se genera una sola vez: si el
+// botón se toca dos veces, las dos escrituras van al MISMO documento
+// en vez de crear dos turnos abiertos.
+let idTurnoPendiente = null
+
+function abrirTurno() {
   const fondo = Number(fondoInicial.value) || 0
-  await addDoc(collection(db, 'turnos'), {
+  if (!idTurnoPendiente) idTurnoPendiente = doc(collection(db, 'turnos')).id
+
+  // Sin await: el turno aparece en esta tablet al instante y se manda al
+  // servidor por detrás.
+  setDoc(doc(db, 'turnos', idTurnoPendiente), {
     abierto: true,
     fondoInicial: fondo,
     fechaApertura: serverTimestamp(),
@@ -1807,10 +2013,16 @@ async function abrirTurno() {
     cantidadPedidos: 0,
     efectivoContado: null,
     diferencia: null
+  }).catch(e => {
+    console.error('Error al abrir turno:', e)
+    mostrarAviso('No se pudo abrir el turno. Revisa la conexión e intenta otra vez.')
   })
+
   // El primer pedido de cada turno nuevo siempre empieza en #001,
   // aunque sea el mismo día y ya hayas cerrado un turno anterior.
-  await reiniciarContadorPedidos()
+  ultimoNumeroLocal.value = 0
+  reiniciarContadorPedidos().catch(e => console.warn('No se pudo reiniciar el contador web:', e))
+
   modalAbrirTurno.value = false
   fondoInicial.value = null
 }
@@ -1825,9 +2037,9 @@ function intentarCerrarTurno() {
   modalCerrarTurno.value = true
 }
 
-async function cerrarTurno() {
+function cerrarTurno() {
   if (!turnoActual.value) return
-  await updateDoc(doc(db, 'turnos', turnoActual.value.id), {
+  updateDoc(doc(db, 'turnos', turnoActual.value.id), {
     abierto: false,
     fechaCierre: serverTimestamp(),
     ventasEfectivo: ventasEfectivo.value,
@@ -1836,7 +2048,16 @@ async function cerrarTurno() {
     cantidadPedidos: pedidosTurno.value.length,
     efectivoContado: Number(efectivoContado.value) || 0,
     diferencia: diferenciaCaja.value
+  }).catch(e => {
+    console.error('Error al cerrar turno:', e)
+    mostrarAviso('No se pudo cerrar el turno. Revisa la conexión e intenta otra vez.')
   })
+
+  // El próximo turno tendrá su propio id
+  idTurnoPendiente = null
+  // Buen momento para limpiar pedidos viejos (una sola vez, no en cada cambio)
+  depurarAntiguos()
+
   modalCerrarTurno.value = false
   efectivoContado.value = null
 }
@@ -1860,9 +2081,12 @@ onMounted(() => {
     limit(1)
   )
   unsubTurno = onSnapshot(qTurno, (snap) => {
+    // serverTimestamps: 'estimate' → mientras el servidor confirma la hora
+    // de apertura, usamos la hora de la tablet en vez de null. Sin esto, un
+    // turno recién abierto se vería "sin hora" unos segundos.
     turnoActual.value = snap.empty
       ? null
-      : { id: snap.docs[0].id, ...snap.docs[0].data() }
+      : { id: snap.docs[0].id, ...snap.docs[0].data({ serverTimestamps: 'estimate' }) }
     cargandoTurno.value = false
     if (!turnoActual.value) modalAbrirTurno.value = true
     else modalAbrirTurno.value = false
@@ -1870,8 +2094,10 @@ onMounted(() => {
 
   const q = query(collection(db, 'pedidos'), orderBy('fecha', 'desc'))
   unsubscribe = onSnapshot(q, (snap) => {
-    depurarAntiguos(snap.docs)
-    const nuevos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // Igual que arriba: un pedido recién guardado trae la hora de la
+    // tablet hasta que el servidor la confirme, así aparece de inmediato
+    // en Activos y cuenta para el número de orden.
+    const nuevos = snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
 
     if (!primeraCarga.value) {
       nuevos.forEach(p => {
@@ -1884,6 +2110,11 @@ onMounted(() => {
 
     pedidosAnteriores.value = new Set(nuevos.map(p => p.id))
     pedidos.value = nuevos
+
+    // La limpieza de pedidos viejos corre una vez al abrir el POS (y al
+    // cerrar turno), ya no con cada cambio: antes cada actualización de
+    // cualquier pedido la disparaba en cada tablet a la vez.
+    if (primeraCarga.value) depurarAntiguos()
     primeraCarga.value = false
   })
 })
@@ -2184,9 +2415,15 @@ onUnmounted(() => {
 .pedido--cancelado { border-left: 4px solid #666; opacity: 0.4; }
 
 .pedido__header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-bottom: 12px;
 }
 .pedido__estado-badge { font-size: 16px; font-weight: 700; color: white; }
+.pedido__previo {
+  font-size: 11px; font-weight: 800; color: #f5a623;
+  background: rgba(245,166,35,0.15); padding: 3px 9px; border-radius: 999px;
+  white-space: nowrap; font-family: 'Plus Jakarta Sans', sans-serif;
+}
 .pedido__tiempo { font-size: 13px; color: rgba(255,255,255,0.4); font-weight: 600; }
 
 .pedido__info { margin-bottom: 12px; }
@@ -2262,6 +2499,39 @@ onUnmounted(() => {
 .accion-btn--entregar:hover { background: #e8900a; }
 .accion-btn--cancelar { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
 .accion-btn--cancelar:hover { background: #cc0000; color: white; }
+.accion-btn--en-cocina {
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7);
+  border: 1.5px dashed rgba(255,255,255,0.25);
+}
+
+/* ── MODALES DE CONFIRMACIÓN (en cocina / cancelar) ── */
+.confirmar-modal {
+  background: white; border-radius: 22px; padding: 24px;
+  width: 100%; max-width: 420px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.confirmar-modal__titulo {
+  margin: 0; font-size: 20px; font-weight: 800; color: #2c1a0e;
+}
+.confirmar-modal__texto {
+  margin: 0 0 6px; font-size: 15px; font-weight: 500; color: #6b5444; line-height: 1.45;
+}
+.confirmar-modal__texto strong { font-size: 15px; font-weight: 800; color: #2c1a0e; }
+.confirmar-modal__principal {
+  padding: 15px; border-radius: 12px; border: none;
+  background: #2c1a0e; color: white;
+  font-size: 15.5px; font-weight: 800; cursor: pointer;
+}
+.confirmar-modal__secundario {
+  padding: 10px; border: none; background: transparent;
+  color: #8a7362; font-size: 13.5px; font-weight: 700;
+  text-decoration: underline; cursor: pointer;
+}
+.confirmar-modal__peligro {
+  padding: 15px; border-radius: 12px; border: none;
+  background: rgba(204,0,0,0.08); color: #cc0000;
+  font-size: 15.5px; font-weight: 800; cursor: pointer;
+}
 
 /* ── MODAL NOMBRE ── */
 .cobro-overlay--top {
@@ -2350,7 +2620,26 @@ onUnmounted(() => {
   font-weight: 800;
   cursor: pointer;
 }
-.nombre-modal__ok:hover { background: #c04e10; }
+.nombre-modal__ok:hover:not(:disabled) { background: #c04e10; }
+.nombre-modal__ok:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── AVISO DE ERROR AL GUARDAR ── */
+.aviso-error {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 3000; width: calc(100% - 32px); max-width: 560px;
+  display: flex; align-items: center; gap: 12px;
+  background: #cc0000; color: white;
+  padding: 14px 16px; border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+.aviso-error__texto {
+  flex: 1; font-size: 14.5px; font-weight: 700; line-height: 1.35;
+}
+.aviso-error__x {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,0.2); color: white;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
 
 /* ── MODAL NOTA DEL PRODUCTO ── */
 .nota-modal__cuerpo { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }

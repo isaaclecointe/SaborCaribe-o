@@ -131,13 +131,16 @@ function tieneAlgoNuevo(pedido) {
 // Firestore y, de paso, limpia las marcas de "cantidadNueva" — así, si
 // más tarde se vuelve a agregar algo a este mismo pedido, solo se
 // resalta lo que sea nuevo DESDE AHORA, no lo de la vez anterior.
-async function marcarListo(id) {
+function marcarListo(id) {
   const pedido = pedidos.value.find(p => p.id === id)
   const productosLimpios = (pedido?.productos || []).map(p => {
     const { cantidadNueva, ...resto } = p
     return resto
   })
-  await updateDoc(doc(db, 'pedidos', id), { estado: 'listo', productos: productosLimpios })
+  // Sin await: el ticket sale de la pantalla al instante y el cambio se
+  // manda al servidor por detrás (si no hay internet, queda en cola).
+  updateDoc(doc(db, 'pedidos', id), { estado: 'listo', productos: productosLimpios })
+    .catch(e => console.error('No se pudo marcar como listo:', e))
 }
 
 // ── Deslizar hacia arriba para marcar listo (además del botón) ──

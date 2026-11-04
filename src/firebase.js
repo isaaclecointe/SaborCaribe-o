@@ -1,6 +1,9 @@
-
 import { initializeApp } from "firebase/app";
-import { getFirestore } from 'firebase/firestore'
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore'
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -14,5 +17,14 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app)
+
+// Firestore con caché offline: los pedidos se guardan primero en la
+// tablet (en su almacenamiento del navegador) y se mandan al servidor en
+// cuanto hay internet. Si el WiFi se cae y además la página se recarga,
+// los pedidos en cola NO se pierden: se envían solos cuando vuelve la
+// conexión. persistentMultipleTabManager permite tener el POS abierto en
+// más de una pestaña sin que la caché choque.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+})
 export const auth = getAuth(app)

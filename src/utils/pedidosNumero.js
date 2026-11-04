@@ -1,8 +1,10 @@
 import { db } from '../firebase.js'
 import { doc, runTransaction, setDoc } from 'firebase/firestore'
 
-// Genera el siguiente número de orden, compartido entre pedidos
-// creados desde el POS y pedidos creados desde la web.
+// Genera el siguiente número de orden para los pedidos WEB
+// (CarritoSheet.vue). El POS ya no usa esta función: calcula su número
+// en la tablet y luego avisa con registrarNumeroUsado() (más abajo), así
+// las dos fuentes comparten una sola secuencia.
 //
 // ¿Cuándo se reinicia a #001?
 //   1. Cada vez que se abre un turno nuevo (ver reiniciarContadorPedidos,
@@ -55,6 +57,22 @@ export async function siguienteNumeroPedido() {
     transaction.update(ref, { ultimo: siguiente })
     return siguiente
   })
+}
+
+// El POS calcula sus números en la propia tablet (sin esperar internet)
+// y después llama a esta función para que el contador sepa qué número se
+// usó, así el próximo pedido web sigue la misma secuencia. Solo sube el
+// contador, nunca lo baja. Corre en segundo plano: si falla (por ejemplo,
+// sin internet), el pedido del POS ya quedó guardado igual.
+export function registrarNumeroUsado(numero) {
+  const ref = doc(db, 'contadores', 'pedidosDiarios')
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref)
+    const actual = snap.exists() ? (snap.data().ultimo || 0) : 0
+    if (numero > actual) {
+      transaction.set(ref, { fecha: fechaLocalHoy(), ultimo: numero }, { merge: true })
+    }
+  }).catch(e => console.warn('No se pudo sincronizar el contador web (el pedido sí se guardó):', e))
 }
 
 // Reinicia el contador a 0 (el próximo pedido será #001).
