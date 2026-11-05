@@ -333,6 +333,8 @@
         class="nombre-modal__input"
         type="text"
         maxlength="30"
+        :placeholder="nombreSugerido"
+        enterkeyhint="done"
         @keyup.enter="confirmarNombre"
       />
 
@@ -802,7 +804,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import productosData from '../../assets/data/productos.json'
@@ -946,6 +948,7 @@ const modalNombre = ref(false)
 const nombrePedido = ref('')
 const accionPendiente = ref(null)
 const inputNombre = ref(null)
+const nombreSugerido = ref('')   // "Orden #005", se muestra en gris en el campo
 const nombreParaCobro = ref('')
 const nombresRapidos = ['Familia', 'Para llevar', 'Grupo', 'Pareja comer aca']
 
@@ -1286,17 +1289,19 @@ async function pedirNombre(accion) {
     return
   }
 
-  // Solo pide nombre para pedidos nuevos
-  nombrePedido.value = nombrePorDefecto()
+  // Solo pide nombre para pedidos nuevos.
+  // El campo arranca vacío y muestra el número sugerido en gris
+  // (placeholder): si el cajero escribe, se usa lo que escribió; si da
+  // "Continuar" sin escribir, se usa el número. Ya no se enfoca el campo
+  // solo, así el teclado del iPad no se abre hasta que el cajero toque
+  // el campo (antes tapaba media pantalla aunque no fuera a escribir).
+  nombreSugerido.value = nombrePorDefecto()
+  nombrePedido.value = ''
   modalNombre.value = true
 
   document.body.style.overflow = 'hidden'
   document.body.style.position = 'fixed'
   document.body.style.width = '100%'
-
-  await nextTick()
-  inputNombre.value?.focus()
-  inputNombre.value?.select()
 }
 function liberarScrollModalNombre() {
   document.body.style.overflow = ''
@@ -1313,7 +1318,8 @@ function confirmarNombre() {
   if (guardando.value) return
   modalNombre.value = false
   liberarScrollModalNombre()
-  const nombre = nombrePedido.value.trim() || nombrePorDefecto()
+  inputNombre.value?.blur() // por si el teclado quedó abierto
+  const nombre = nombrePedido.value.trim() || nombreSugerido.value || nombrePorDefecto()
 
   if (accionPendiente.value === 'guardar') {
     conCandado(() => persistirPedido('guardado', 'llevar', nombre))
@@ -2090,15 +2096,26 @@ function irAlHistorial() {
 
 // ── Color de la barra superior de Safari (iPad) ──
 // Safari pinta la franja de arriba (hora, batería) con un color que saca
-// de la página, y lo difumina sobre el contenido. Sin indicarle nada, usa
-// el fondo crema del POS y se ve un difuminado blanco encima de la barra
-// oscura. Con theme-color le decimos que use el mismo color de la barra.
-// Solo mientras el POS está abierto: al salir se restaura lo que había.
+// de la página, y lo difumina sobre el contenido. Si saca un color claro,
+// se ve un difuminado blanco encima de la barra oscura del POS.
+// Las versiones nuevas de Safari ya no hacen caso a theme-color y toman el
+// color del fondo de la página (html/body) o de una barra fija arriba. Por
+// eso, mientras el POS está abierto: (1) el fondo de html/body pasa al
+// color de la barra, (2) dejamos theme-color por si el Safari es más viejo,
+// y (3) la barra es "sticky" arriba (ver .navbar en el CSS).
+// Al salir del POS se restaura todo como estaba.
 const COLOR_BARRA = '#1a0e06'
 let metaThemeColor = null
 let themeColorAnterior = null
+let fondoHtmlAnterior = ''
+let fondoBodyAnterior = ''
 
 function aplicarColorBarra() {
+  fondoHtmlAnterior = document.documentElement.style.backgroundColor
+  fondoBodyAnterior = document.body.style.backgroundColor
+  document.documentElement.style.backgroundColor = COLOR_BARRA
+  document.body.style.backgroundColor = COLOR_BARRA
+
   metaThemeColor = document.querySelector('meta[name="theme-color"]')
   if (metaThemeColor) {
     themeColorAnterior = metaThemeColor.getAttribute('content')
@@ -2111,6 +2128,8 @@ function aplicarColorBarra() {
 }
 
 function restaurarColorBarra() {
+  document.documentElement.style.backgroundColor = fondoHtmlAnterior
+  document.body.style.backgroundColor = fondoBodyAnterior
   if (!metaThemeColor) return
   if (themeColorAnterior !== null) metaThemeColor.setAttribute('content', themeColorAnterior)
   else metaThemeColor.remove()
@@ -2206,6 +2225,9 @@ onUnmounted(() => {
 .navbar {
   display: flex; align-items: center; gap: 0;
   background: #1a0e06; padding: 0 12px; height: 60px; flex-shrink: 0;
+  /* Pegada arriba: Safari en iPad toma de aquí el color de la franja de
+     la hora/batería (ver aplicarColorBarra en el script) */
+  position: sticky; top: 0; z-index: 50;
 }
 
 .navbar__menu {
@@ -2641,6 +2663,7 @@ onUnmounted(() => {
   margin: 0;
 }
 .nombre-modal__input:focus { border-color: #e8621a; }
+.nombre-modal__input::placeholder { color: #b3a394; font-size: 22px; font-weight: 600; opacity: 1; }
 
 .nombre-modal__rapidos {
   display: grid;
