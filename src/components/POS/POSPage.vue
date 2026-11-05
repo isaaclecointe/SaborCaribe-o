@@ -24,7 +24,7 @@
 
       <div class="navbar__user">
         <span class="navbar__dot"></span>
-        <span>En vivo</span>
+        <span class="navbar__user-texto">En vivo</span>
       </div>
     </header>
 
@@ -822,17 +822,27 @@ const nombresCortosPos = {
   6: 'Quesadilla Peperonne y Jamon'
 }
 
+// Posición en la cuadrícula del POS para productos que se agregaron
+// después y que deben quedar junto a sus parecidos (por defecto se
+// ordenan por id). Ej: el Burrito de Pasta (21) junto al de Pollo (14).
+const posicionesPos = {
+  21: 14.5
+}
+
 // Categorías que el cajero despacha directo (bebidas, postres) y que
 // cocina NO tiene que preparar. Si lo único que se agrega a un pedido
 // ya "listo" es algo de estas categorías, el pedido se queda en "listo"
 // y no vuelve a aparecer en la pantalla de Cocina.
 const CATEGORIAS_SIN_COCINA = ['Frescos', 'Postres']
 // ── Productos fusionados solo para el POS ──
+// `posicion` = dónde aparece el botón en la cuadrícula (los productos
+// normales se ordenan por su id; 2.5 = entre el id 2 y el 3, etc.)
 const fusionesPOS = [
   {
     id: 'tortilla-grande',
     nombre: 'Tortilla Grande',
     categoria: 'Tortillas de Harina',
+    posicion: 2.5,            // después de Tortilla Pequeña
     reemplaza: [2, 3],        // ids que oculta del grid
     opciones: [
       { nombre: 'Pollo',   precio: 31 },
@@ -841,9 +851,21 @@ const fusionesPOS = [
     ]
   },
   {
+    id: 'gringas',
+    nombre: 'Gringas',
+    categoria: 'Tacos',
+    posicion: 10.5,           // después de Tacos de Res
+    reemplaza: [19, 20],      // ids que oculta del grid
+    opciones: [
+      { nombre: '2x', precio: 25 },
+      { nombre: '3x', precio: 35 }
+    ]
+  },
+  {
     id: 'yogurt',
     nombre: 'Yogurt',
     categoria: 'Postres',
+    posicion: 15.5,           // junto a Gelatina, con los postres
     reemplaza: [16, 17, 18],  // ids que oculta del grid
     opciones: [
       { nombre: 'Pequeño', precio: 6 },
@@ -869,18 +891,17 @@ const productosPOS = computed(() => {
         : null
     }))
 
-  // Inserta las fusiones en la posición del primer id que reemplazan
+  // Agrega las fusiones y ordena todo por posición
   const resultado = [...normales]
   fusionesPOS.forEach(f => {
     const precioBase = Math.min(...f.opciones.map(o => o.precio))
     resultado.push({ ...f, precio: precioBase, esFusion: true })
   })
 
-  return resultado.sort((a, b) => {
-    const ia = typeof a.id === 'number' ? a.id : 2.5
-    const ib = typeof b.id === 'number' ? b.id : 2.5
-    return ia - ib
-  })
+  const posicionDe = p =>
+    p.esFusion ? p.posicion : (posicionesPos[p.id] ?? p.id)
+
+  return resultado.sort((a, b) => posicionDe(a) - posicionDe(b))
 })
 
 const router = useRouter()
@@ -2067,8 +2088,39 @@ function irAlHistorial() {
   router.push('/historial')
 }
 
+// ── Color de la barra superior de Safari (iPad) ──
+// Safari pinta la franja de arriba (hora, batería) con un color que saca
+// de la página, y lo difumina sobre el contenido. Sin indicarle nada, usa
+// el fondo crema del POS y se ve un difuminado blanco encima de la barra
+// oscura. Con theme-color le decimos que use el mismo color de la barra.
+// Solo mientras el POS está abierto: al salir se restaura lo que había.
+const COLOR_BARRA = '#1a0e06'
+let metaThemeColor = null
+let themeColorAnterior = null
+
+function aplicarColorBarra() {
+  metaThemeColor = document.querySelector('meta[name="theme-color"]')
+  if (metaThemeColor) {
+    themeColorAnterior = metaThemeColor.getAttribute('content')
+  } else {
+    metaThemeColor = document.createElement('meta')
+    metaThemeColor.setAttribute('name', 'theme-color')
+    document.head.appendChild(metaThemeColor)
+  }
+  metaThemeColor.setAttribute('content', COLOR_BARRA)
+}
+
+function restaurarColorBarra() {
+  if (!metaThemeColor) return
+  if (themeColorAnterior !== null) metaThemeColor.setAttribute('content', themeColorAnterior)
+  else metaThemeColor.remove()
+  metaThemeColor = null
+  themeColorAnterior = null
+}
+
 // ── Firebase ──
 onMounted(() => {
+    aplicarColorBarra()
 
     escucharExtras()
 
@@ -2120,6 +2172,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  restaurarColorBarra()
   if (unsubscribe) unsubscribe()
   if (unsubTurno) unsubTurno()
   detenerExtras()
@@ -2194,6 +2247,8 @@ onUnmounted(() => {
   color: rgba(255,255,255,0.5); font-size: 12.5px; font-weight: 700;
   padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.05);
 }
+/* Tamaño explícito: sin esto el span hereda los 24px globales de style.css */
+.navbar__user-texto { font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,0.5); }
 .navbar__dot {
   width: 6px; height: 6px; background: #3aa65a; border-radius: 50%;
   box-shadow: 0 0 0 3px rgba(58,166,90,0.2);

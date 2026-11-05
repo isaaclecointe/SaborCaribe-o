@@ -178,6 +178,36 @@
   "imagen": "Yogurt.jpg",
   "tag": null,
   "opciones": null
+},
+{
+  "id": 19,
+  "nombre": "Gringas (2x)",
+  "descripcion": "2 gringas con queso derretido y carne bien sazonada. Para el antojo.",
+  "precio": 25,
+  "categoria": "Tacos",
+  "imagen": "Gringa.jpg",
+  "tag": "Nuevo",
+  "opciones": null
+},
+{
+  "id": 20,
+  "nombre": "Gringas (3x)",
+  "descripcion": "3 gringas con queso derretido y carne bien sazonada. Para el hambre de verdad.",
+  "precio": 35,
+  "categoria": "Tacos",
+  "imagen": "Gringa.jpg",
+  "tag": "Nuevo",
+  "opciones": null
+},
+{
+  "id": 21,
+  "nombre": "Burrito de Pasta",
+  "descripcion": "Burrito relleno de pasta bien sazonada. Rendidor y delicioso.",
+  "precio": 10,
+  "categoria": "Tortillas de Harina",
+  "imagen": "BurritoPasta.jpg",
+  "tag": "Nuevo",
+  "opciones": null
 }
 
 ]
