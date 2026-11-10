@@ -1083,10 +1083,13 @@ const fusionesPOS = [
     categoria: 'Tortillas de Harina',
     posicion: 2.5,            // después de Tortilla Pequeña
     reemplaza: [2, 3],        // ids que oculta del grid
+    // productoId = el producto real de productos.json de cada opción.
+    // Así los extras asignados en "Gestionar extras" a ese producto sí
+    // aparecen al tocar la nota del pedido.
     opciones: [
-      { nombre: 'Pollo',   precio: 31 },
-      { nombre: 'Adobado', precio: 31 },
-      { nombre: 'Res',     precio: 33 }
+      { nombre: 'Pollo',   precio: 31, productoId: 2 },
+      { nombre: 'Adobado', precio: 31, productoId: 2 },
+      { nombre: 'Res',     precio: 33, productoId: 3 }
     ]
   },
   {
@@ -1096,8 +1099,8 @@ const fusionesPOS = [
     posicion: 10.5,           // después de Tacos de Res
     reemplaza: [19, 20],      // ids que oculta del grid
     opciones: [
-      { nombre: '2x', precio: 25 },
-      { nombre: '3x', precio: 35 }
+      { nombre: '2x', precio: 25, productoId: 19 },
+      { nombre: '3x', precio: 35, productoId: 20 }
     ]
   },
   {
@@ -1107,9 +1110,9 @@ const fusionesPOS = [
     posicion: 15.5,           // junto a Gelatina, con los postres
     reemplaza: [16, 17, 18],  // ids que oculta del grid
     opciones: [
-      { nombre: 'Pequeño', precio: 6 },
-      { nombre: 'Mediano', precio: 25 },
-      { nombre: 'Grande',  precio: 40 }
+      { nombre: 'Pequeño', precio: 6,  productoId: 16 },
+      { nombre: 'Mediano', precio: 25, productoId: 17 },
+      { nombre: 'Grande',  precio: 40, productoId: 18 }
     ]
   }
 ]
@@ -1372,13 +1375,17 @@ function agregarProducto(producto, opcion = null) {
   const precio = opcion?.precio ?? producto.precio
   const base = producto.nombreCorto || producto.nombre
   const nombreCompleto = nombreOp ? `${base} ${nombreOp}` : base
+  // En los botones agrupados (Tortilla Grande, Yogurt, Gringas) el id es
+  // el del producto real de la opción elegida, no el del botón agrupado:
+  // de eso dependen los extras.
+  const idProducto = opcion?.productoId ?? producto.id
 
-  const key = nombreOp ? `${producto.id}-${nombreOp}` : `${producto.id}`
+  const key = nombreOp ? `${idProducto}-${nombreOp}` : `${idProducto}`
   const existe = orden.value.find(i => i.key === key)
 
   if (existe) existe.cantidad++
   else orden.value.push({
-    id: producto.id,
+    id: idProducto,
     nombre: nombreCompleto,
     categoria: producto.categoria,
     precio,
@@ -1572,6 +1579,9 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
   if (!orden.value.length) return
 
   const productos = orden.value.map(i => ({
+    // Producto real de productos.json: al editar el pedido después, con
+    // esto se recuperan sus extras (el nombre lleva la opción pegada).
+    productoId: typeof i.id === 'number' ? i.id : null,
     nombre: i.nombre,
     categoria: i.categoria || null,
     opcion: i.opcion || null,
@@ -1730,11 +1740,31 @@ function esEditable(pedido) {
   return pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'
 }
 
+// Producto real (id de productos.json) de un producto ya guardado en un
+// pedido. Los pedidos nuevos lo traen en productoId. En los guardados antes
+// hay que deducirlo del nombre, que lleva la opción pegada ("Tortilla
+// Grande Pollo", "Tortilla Pequeña Res") o es el nombre corto del POS.
+function idDeProductoGuardado(p, i) {
+  if (p.productoId != null) return p.productoId
+  const directo = productosData.find(x => x.nombre === p.nombre)
+  if (directo) return directo.id
+  for (const f of fusionesPOS) {
+    const op = f.opciones.find(o => `${f.nombre} ${o.nombre}` === p.nombre)
+    if (op) return op.productoId
+  }
+  const normal = productosPOS.value.find(x => {
+    if (x.esFusion) return false
+    const base = x.nombreCorto || x.nombre
+    return base === p.nombre || (p.opcion && `${base} ${p.opcion}` === p.nombre)
+  })
+  return normal ? normal.id : `x${i}`
+}
+
 function editarPedido(pedido) {
   pedidoEditandoId.value = pedido.id
   orden.value = pedido.productos.map((p, i) => {
-    const original = productosData.find(x => x.nombre === p.nombre)
-    const baseId = original?.id ?? `x${i}`
+    const baseId = idDeProductoGuardado(p, i)
+    const original = productosData.find(x => x.id === baseId)
     return {
       id: baseId,
       nombre: p.nombre,
@@ -1858,8 +1888,8 @@ function cobrarPedidoExistente(pedido) {
   pedidoEditandoId.value = pedido.id
   cobroPedidoId.value = pedido.id
   orden.value = pedido.productos.map((p, i) => {
-    const original = productosData.find(x => x.nombre === p.nombre)
-    const baseId = original?.id ?? `x${i}`
+    const baseId = idDeProductoGuardado(p, i)
+    const original = productosData.find(x => x.id === baseId)
     return {
       id: baseId,
       nombre: p.nombre,

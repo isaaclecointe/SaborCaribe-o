@@ -41,12 +41,29 @@
         <p class="hist__estado-titulo">Cargando turnos…</p>
       </div>
 
+      <!-- Si Firebase da un error, se muestra (antes se veía como "no hay turnos") -->
+      <div v-else-if="errorCarga" class="hist__estado hist__estado--error">
+        <p class="hist__estado-titulo">No se pudieron cargar los turnos</p>
+        <p class="hist__estado-texto">Revisa la conexión de la tablet e intenta otra vez.</p>
+        <p class="hist__estado-detalle">Detalle: {{ errorCarga }}</p>
+        <button class="hist__reintentar" @click="recargar">Reintentar</button>
+      </div>
+
+      <!-- Respuesta vacía de la caché de la tablet: todavía falta la del servidor -->
+      <div v-else-if="turnos.length === 0 && soloCache" class="hist__estado">
+        <p class="hist__estado-titulo">Conectando con el servidor…</p>
+        <p class="hist__estado-texto">Si esto no cambia en unos segundos, revisa el internet de la tablet.</p>
+      </div>
+
       <div v-else-if="turnos.length === 0" class="hist__estado">
         <p class="hist__estado-titulo">Aún no hay turnos cerrados</p>
         <p class="hist__estado-texto">Cuando cierres tu primer turno, su resumen aparecerá aquí.</p>
       </div>
 
       <template v-else>
+        <p v-if="soloCache" class="hist__aviso-cache">
+          Mostrando lo guardado en esta tablet; se actualiza solo cuando vuelva la conexión.
+        </p>
         <h2 class="hist__seccion">Turnos cerrados</h2>
 
         <div class="turnos-lista">
@@ -140,7 +157,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { db } from '../../firebase.js'
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
 
 const router = useRouter()
 const turnos = ref([])
@@ -251,20 +268,38 @@ const totalGastosGeneral = computed(() =>
   turnos.value.reduce((s, t) => s + totalGastosDe(t), 0)
 )
 
-onMounted(() => {
-  const q = query(
-    collection(db, 'turnos'),
-    where('abierto', '==', false),
-    orderBy('fechaCierre', 'desc')
-  )
-  unsub = onSnapshot(q, (snap) => {
-    turnos.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+// ── Carga desde Firebase ──
+const errorCarga = ref('')   // mensaje de error de Firebase, si lo hay
+const soloCache = ref(false) // true mientras solo tenemos lo guardado en la tablet
+
+function escuchar() {
+  if (unsub) unsub()
+  // Sin orderBy en la consulta: se ordena aquí, en la tablet. Así la consulta
+  // no depende de un índice compuesto en Firebase (igual que en el POS).
+  const q = query(collection(db, 'turnos'), where('abierto', '==', false))
+  // includeMetadataChanges: avisa también cuando llega la respuesta del
+  // servidor, no solo la de la caché de la tablet.
+  unsub = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
+    turnos.value = snap.docs
+      .map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
+      .sort((a, b) => (aFecha(b.fechaCierre) || 0) - (aFecha(a.fechaCierre) || 0))
+    soloCache.value = snap.metadata.fromCache
+    errorCarga.value = ''
     cargando.value = false
   }, (err) => {
     console.error('Error cargando turnos:', err)
+    errorCarga.value = err?.code || err?.message || 'error desconocido'
     cargando.value = false
   })
-})
+}
+
+function recargar() {
+  cargando.value = true
+  errorCarga.value = ''
+  escuchar()
+}
+
+onMounted(escuchar)
 
 onUnmounted(() => { if (unsub) unsub() })
 </script>
@@ -331,6 +366,19 @@ onUnmounted(() => { if (unsub) unsub() })
 .hist__estado { text-align: center; padding: 72px 16px; }
 .hist__estado-titulo { margin: 0; font-size: 18px; font-weight: 800; color: #6b5444; }
 .hist__estado-texto { margin: 6px 0 0; font-size: 14px; font-weight: 500; color: #a3948a; }
+
+.hist__estado-detalle {
+  margin: 10px 0 0; font-size: 12.5px; font-weight: 600; color: #b30000;
+  font-variant-numeric: tabular-nums;
+}
+.hist__reintentar {
+  margin-top: 16px; height: 44px; padding: 0 22px; border-radius: 12px; border: none;
+  background: #2c1a0e; color: #ffffff; font-size: 14.5px; font-weight: 800; cursor: pointer;
+}
+.hist__aviso-cache {
+  margin: -12px 0 16px; padding: 10px 14px; border-radius: 10px;
+  background: #fdf3e1; font-size: 13px; font-weight: 600; color: #8a5a00;
+}
 
 .hist__seccion {
   margin: 0 0 12px; font-size: 12px; font-weight: 800; color: #b3a394;
