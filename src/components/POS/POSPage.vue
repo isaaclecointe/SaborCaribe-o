@@ -62,13 +62,28 @@
         <strong class="turno-stat__valor">{{ pedidosTurno.length }}</strong>
       </div>
       <div class="turno-stat">
-        <span class="turno-stat__label">Efectivo</span>
+        <span class="turno-stat__label">Ventas en efectivo</span>
         <strong class="turno-stat__valor">Q{{ ventasEfectivo }}</strong>
       </div>
       <div class="turno-stat">
-        <span class="turno-stat__label">Tarjeta</span>
+        <span class="turno-stat__label">Ventas con tarjeta</span>
         <strong class="turno-stat__valor">Q{{ ventasTarjeta }}</strong>
       </div>
+      <div class="turno-stat turno-stat--fila">
+        <span class="turno-stat__label">Gastos</span>
+        <strong class="turno-stat__valor" :class="{ 'turno-stat__valor--gasto': totalGastos > 0 }">
+          {{ totalGastos > 0 ? `−Q${totalGastos}` : 'Q0' }}
+        </strong>
+      </div>
+    </div>
+
+    <!-- Lo que debe haber físicamente en la caja: la tarjeta no se suma -->
+    <div class="turno-caja">
+      <div class="turno-caja__fila">
+        <span class="turno-caja__label">Efectivo en caja</span>
+        <span class="turno-caja__valor">Q{{ efectivoEsperado }}</span>
+      </div>
+      <span class="turno-caja__nota">Fondo + ventas en efectivo − gastos. Lo cobrado con tarjeta no se suma.</span>
     </div>
   </div>
 
@@ -80,6 +95,14 @@
 <div class="drawer__acciones">
   <button class="drawer__btn drawer__btn--historial" @click="irAlHistorial">
     Historial de turnos
+  </button>
+  <button
+    v-if="turnoActual"
+    class="drawer__btn drawer__btn--gastos"
+    @click="abrirGastos"
+  >
+    Gastos del turno
+    <span v-if="gastosTurno.length" class="drawer__btn-contador">{{ gastosTurno.length }}</span>
   </button>
   <button
     v-if="turnoActual"
@@ -209,109 +232,126 @@
             :class="[`pedido--${pedido.estado}`, { 'pedido--editable': esEditable(pedido) }]"
             @click="esEditable(pedido) && editarPedido(pedido)"
           >
-            <div class="pedido__header">
-              <span class="pedido__estado-badge">{{ etiquetaEstado(pedido.estado) }}</span>
+            <!-- Estado · etiquetas · tiempo -->
+            <div class="pedido__top">
+              <span class="pedido__estado" :class="`pedido__estado--${pedido.estado}`">
+                <span class="pedido__estado-punto"></span>{{ textoEstado(pedido.estado) }}
+              </span>
               <span v-if="!esDelTurnoActual(pedido)" class="pedido__previo">De antes del turno</span>
               <span class="pedido__tiempo">{{ formatTiempo(pedido.fecha) }}</span>
             </div>
 
-            <div class="pedido__info">
-              <p class="pedido__cliente">
-                👤 {{ pedido.cliente || 'Mostrador' }}
-                <span v-if="pedido.numero" class="pedido__numero">
-                  #{{ String(pedido.numero).padStart(3, '0') }}
-                </span>
-              </p>
-              <p class="pedido__sucursal">
-                📍 {{ pedido.sucursal || 'Mostrador' }}
-                <span v-if="pedido.tipoOrden === 'local'"> · 🍽️ Comer acá</span>
-                <span v-if="pedido.origen !== 'pos'" class="pedido__origen-web"> · 🌐 Web</span>
-              </p>
-              <p v-if="pedido.comentario" class="pedido__comentario">💬 {{ pedido.comentario }}</p>
-             <p v-if="pedido.pagado && (!pedido.pagos || pedido.pagos.length === 0)" class="pedido__pagado">
-                ✅ Pagado · {{ pedido.metodoPago === 'efectivo' ? '💵 Efectivo' : '💳 Tarjeta' }}
-              </p>
-
-              <div v-else-if="pedido.pagos && pedido.pagos.length > 0" class="pedido__pagos">
-                <span class="pedido__pagos-titulo">💰 Pagos divididos</span>
-                <div v-for="(pg, i) in pedido.pagos" :key="i" class="pedido__pago">
-                  <span>{{ pg.metodo === 'efectivo' ? '💵' : '💳' }} Q{{ pg.monto }}</span>
-                  <span class="pedido__pago-items">{{ pg.items.join(', ') }}</span>
-                </div>
-              </div>
-
-              <p v-else-if="pedido.estado !== 'cancelado'" class="pedido__pendiente">
-                ⏳ Pendiente de pago
-              </p>
+            <!-- Cliente y número -->
+            <div class="pedido__titulo">
+              <span class="pedido__cliente">{{ pedido.cliente || 'Mostrador' }}</span>
+              <!-- Si el nombre ya es "Orden #00X", la etiqueta repetiría el número -->
+              <span
+                v-if="pedido.numero && !(pedido.cliente || '').startsWith('Orden #')"
+                class="pedido__numero"
+              >#{{ String(pedido.numero).padStart(3, '0') }}</span>
             </div>
+            <p class="pedido__meta">
+              {{ pedido.sucursal || 'Mostrador' }}
+              <span class="pedido__meta-sep">·</span>
+              {{ pedido.tipoOrden === 'local' ? 'Comer acá' : 'Para llevar' }}
+              <template v-if="pedido.origen !== 'pos'">
+                <span class="pedido__meta-sep">·</span>
+                <span class="pedido__web">Web</span>
+              </template>
+            </p>
 
-            <div class="pedido__productos">
-              <div v-for="(prod, i) in pedido.productos" :key="i" class="pedido__producto">
+            <p v-if="pedido.comentario" class="pedido__comentario">
+              <span class="pedido__comentario-label">Nota</span>{{ pedido.comentario }}
+            </p>
+
+            <!-- Productos -->
+            <ul class="pedido__productos">
+              <li v-for="(prod, i) in pedido.productos" :key="i" class="pedido__producto">
+                <span class="pedido__cant">{{ prod.cantidad }}×</span>
                 <div class="pedido__producto-texto">
-                  <span>
-                    {{ prod.cantidad }}x {{ prod.nombre }}
+                  <span class="pedido__producto-nombre">
+                    {{ prod.nombre }}
                     <span v-if="prod.cantidadNueva > 0" class="pedido__producto-badge-nuevo">+{{ prod.cantidadNueva }} nuevo</span>
                   </span>
                   <span v-if="prod.comentario || prod.extras?.length" class="pedido__producto-nota">
-                    📝 {{ [prod.extras?.map(nombreExtraConCantidad).join(', '), prod.comentario].filter(Boolean).join(' · ') }}
+                    {{ [prod.extras?.map(nombreExtraConCantidad).join(', '), prod.comentario].filter(Boolean).join(' · ') }}
                   </span>
                 </div>
                 <span class="pedido__producto-precio">Q{{ prod.subtotal }}</span>
-              </div>
-            </div>
-            <div class="pedido__footer">
-              <div class="pedido__totales">
-                <span class="pedido__total">Total: Q{{ pedido.total }}</span>
-                <span v-if="pedido.montoPagado > 0 && pedido.montoPagado < pedido.total" class="pedido__resta">
-                  Pagado Q{{ pedido.montoPagado }} · Falta Q{{ pedido.total - pedido.montoPagado }}
+              </li>
+            </ul>
+
+            <!-- Pagos divididos -->
+            <div v-if="pedido.pagos && pedido.pagos.length > 0" class="pedido__pagos">
+              <span class="pedido__pagos-titulo">Pagos divididos</span>
+              <div v-for="(pg, i) in pedido.pagos" :key="i" class="pedido__pago">
+                <span class="pedido__pago-monto">
+                  Q{{ pg.monto }}
+                  <span class="pedido__pago-metodo">{{ pg.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta' }}</span>
                 </span>
-              </div>
-              <div class="pedido__acciones" @click.stop>
-                <!-- Si el pedido tiene algo que cocina prepara, solo cocina lo
-                     marca listo. Caja ve "En cocina" y, si lo toca, un aviso. -->
-                <button
-                  v-if="(pedido.estado === 'nuevo' || pedido.estado === 'guardado') && necesitaCocina(pedido)"
-                  class="accion-btn accion-btn--en-cocina"
-                  @click="pedidoEnCocina = pedido"
-                >
-                  👨‍🍳 En cocina
-                </button>
-                <!-- Solo bebidas/postres: cocina no hace nada, caja lo marca directo -->
-                <button
-                  v-else-if="pedido.estado === 'nuevo' || pedido.estado === 'guardado'"
-                  class="accion-btn accion-btn--listo"
-                  @click="cambiarEstado(pedido.id, 'listo')"
-                >
-                  ✅ Listo
-                </button>
-
-                <button
-                  v-if="pedido.estado === 'listo' && !pedido.pagado"
-                  class="accion-btn accion-btn--cobrar"
-                  @click="cobrarPedidoExistente(pedido)"
-                >
-                  💵 Cobrar
-                </button>
-
-                <button
-                  v-if="pedido.estado === 'listo' && pedido.pagado"
-                  class="accion-btn accion-btn--entregar"
-                  @click="cambiarEstado(pedido.id, 'entregado')"
-                >
-                  📦 Entregar
-                </button>
-
-                <button
-                  v-if="pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'"
-                  class="accion-btn accion-btn--cancelar"
-                  @click="pedidoACancelar = pedido"
-                >
-                  ❌ Cancelar
-                </button>
+                <span class="pedido__pago-items">{{ pg.items.join(', ') }}</span>
               </div>
             </div>
 
-            <p v-if="esEditable(pedido)" class="pedido__hint">Toca para editar</p>
+            <!-- Total y estado del pago -->
+            <div class="pedido__resumen">
+              <div class="pedido__total-bloque">
+                <span class="pedido__total-label">Total</span>
+                <span class="pedido__total">Q{{ pedido.total }}</span>
+              </div>
+              <span
+                v-if="pedido.pagado && (!pedido.pagos || pedido.pagos.length === 0)"
+                class="pedido__pago-estado pedido__pago-estado--ok"
+              >Pagado · {{ pedido.metodoPago === 'efectivo' ? 'Efectivo' : 'Tarjeta' }}</span>
+              <span
+                v-else-if="pedido.montoPagado > 0 && pedido.montoPagado < pedido.total"
+                class="pedido__pago-estado pedido__pago-estado--parcial"
+              >Pagado Q{{ pedido.montoPagado }} · Falta Q{{ pedido.total - pedido.montoPagado }}</span>
+              <span v-else-if="pedido.pagado" class="pedido__pago-estado pedido__pago-estado--ok">Pagado</span>
+              <span
+                v-else-if="pedido.estado !== 'cancelado'"
+                class="pedido__pago-estado pedido__pago-estado--pendiente"
+              >Pendiente de pago</span>
+            </div>
+
+            <!-- Acciones -->
+            <div class="pedido__acciones" @click.stop>
+              <!-- Si el pedido tiene algo que cocina prepara, solo cocina lo
+                   marca listo. Caja ve "En cocina" y, si lo toca, un aviso. -->
+              <button
+                v-if="(pedido.estado === 'nuevo' || pedido.estado === 'guardado') && necesitaCocina(pedido)"
+                class="accion-btn accion-btn--en-cocina"
+                @click="pedidoEnCocina = pedido"
+              >
+                <span class="accion-btn__punto"></span>En cocina
+              </button>
+              <!-- Solo bebidas/postres: cocina no hace nada, caja lo marca directo -->
+              <button
+                v-else-if="pedido.estado === 'nuevo' || pedido.estado === 'guardado'"
+                class="accion-btn accion-btn--listo"
+                @click="cambiarEstado(pedido.id, 'listo')"
+              >Marcar listo</button>
+
+              <button
+                v-if="pedido.estado === 'listo' && !pedido.pagado"
+                class="accion-btn accion-btn--cobrar"
+                @click="cobrarPedidoExistente(pedido)"
+              >Cobrar</button>
+
+              <button
+                v-if="pedido.estado === 'listo' && pedido.pagado"
+                class="accion-btn accion-btn--entregar"
+                @click="cambiarEstado(pedido.id, 'entregado')"
+              >Entregar</button>
+
+              <button
+                v-if="pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'"
+                class="accion-btn accion-btn--cancelar"
+                @click="pedidoACancelar = pedido"
+              >Cancelar</button>
+            </div>
+
+            <p v-if="esEditable(pedido)" class="pedido__hint">Toca el pedido para editarlo</p>
           </div>
         </div>
       </div>
@@ -449,46 +489,96 @@
       <div v-if="cobroAbierto" class="cobro-overlay" @click.self="cerrarCobro">
         <div class="cobro">
           <div class="cobro__header">
-            <h2>Cobrar</h2>
-            <button class="cobro__cerrar" @click="cerrarCobro">✕</button>
+            <div class="cobro__header-textos">
+              <h2 class="cobro__titulo">Cobrar pedido</h2>
+              <p v-if="nombreParaCobro" class="cobro__sub">{{ nombreParaCobro }}</p>
+            </div>
+            <button class="cobro__cerrar" aria-label="Cerrar" @click="cerrarCobro">✕</button>
           </div>
 
           <div class="cobro__monto">
-            <span>Total a pagar</span>
-            <strong>Q{{ montoACobrar }}</strong>
+            <span class="cobro__monto-label">Total a pagar</span>
+            <span class="cobro__monto-valor">Q{{ montoACobrar }}</span>
           </div>
 
-          <div class="cobro__metodos">
-            <button class="metodo-btn" :class="{ 'metodo-btn--activo': metodoPago === 'efectivo' }" @click="metodoPago = 'efectivo'">
-              💵 Efectivo
+          <!-- Método de pago -->
+          <div class="segmento" role="radiogroup" aria-label="Método de pago">
+            <button
+              class="segmento__opcion"
+              :class="{ 'segmento__opcion--activa': metodoPago === 'efectivo' }"
+              role="radio"
+              :aria-checked="metodoPago === 'efectivo'"
+              @click="metodoPago = 'efectivo'"
+            >
+              <svg class="segmento__icono" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="2.5" y="6" width="19" height="12" rx="2" />
+                <circle cx="12" cy="12" r="2.6" />
+                <path d="M6 9.5v5M18 9.5v5" />
+              </svg>
+              <span class="segmento__texto">Efectivo</span>
             </button>
-            <button class="metodo-btn" :class="{ 'metodo-btn--activo': metodoPago === 'tarjeta' }" @click="metodoPago = 'tarjeta'">
-              💳 Tarjeta
+            <button
+              class="segmento__opcion"
+              :class="{ 'segmento__opcion--activa': metodoPago === 'tarjeta' }"
+              role="radio"
+              :aria-checked="metodoPago === 'tarjeta'"
+              @click="metodoPago = 'tarjeta'"
+            >
+              <svg class="segmento__icono" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+                <path d="M2.5 10h19M6 15h4" />
+              </svg>
+              <span class="segmento__texto">Tarjeta</span>
             </button>
           </div>
 
           <div v-if="metodoPago === 'efectivo'" class="cobro__efectivo">
-            <label class="cobro__label">Efectivo recibido</label>
-            <input v-model.number="efectivoRecibido" type="number" class="cobro__input" placeholder="0" />
-            <div class="cobro__sugerencias">
-              <button v-for="s in sugerencias" :key="s" class="sug-btn" @click="efectivoRecibido = s">Q{{ s }}</button>
+            <label class="cobro__label" for="cobro-efectivo">
+              Efectivo recibido
+              <span class="cobro__label-opcional">Opcional · vacío = pago exacto</span>
+            </label>
+            <div class="campo-monto">
+              <span class="campo-monto__prefijo">Q</span>
+              <input
+                id="cobro-efectivo"
+                v-model.number="efectivoRecibido"
+                type="number"
+                inputmode="decimal"
+                class="campo-monto__input"
+                placeholder="0"
+              />
             </div>
-            <div v-if="efectivoRecibido >= montoACobrar" class="cobro__cambio">
-              <span>Cambio</span><strong>Q{{ efectivoRecibido - montoACobrar }}</strong>
+            <div class="sugerencias">
+              <button
+                v-for="s in sugerencias"
+                :key="s"
+                class="sug-btn"
+                :class="{ 'sug-btn--activa': efectivoRecibido === s }"
+                @click="efectivoRecibido = s"
+              >
+                <span class="sug-btn__monto">Q{{ s }}</span>
+                <span v-if="s === montoACobrar" class="sug-btn__etiqueta">Exacto</span>
+              </button>
             </div>
-            <p v-else-if="efectivoRecibido > 0" class="cobro__falta">
-              Faltan Q{{ montoACobrar - efectivoRecibido }}
-            </p>
+            <div v-if="efectivoRecibido >= montoACobrar" class="resultado resultado--cambio">
+              <span class="resultado__label">Cambio a devolver</span>
+              <span class="resultado__valor">Q{{ efectivoRecibido - montoACobrar }}</span>
+            </div>
+            <div v-else-if="efectivoRecibido > 0" class="resultado resultado--falta">
+              <span class="resultado__label">Faltan</span>
+              <span class="resultado__valor">Q{{ montoACobrar - efectivoRecibido }}</span>
+            </div>
           </div>
+          <p v-else class="cobro__nota-tarjeta">
+            Cobra Q{{ montoACobrar }} en la terminal y confirma cuando el pago sea aprobado.
+          </p>
 
-           <button class="cobro__dividir" @click="abrirDividir">
-              🧾 Dividir cuenta
-           </button>
-
-       <button class="cobro__confirmar" :disabled="!puedeConfirmar || guardando" @click="confirmarCobro">
-         {{ guardando ? 'Cobrando...' : 'Confirmar cobro' }}
-       </button>
-
+          <div class="cobro__acciones">
+            <button class="cobro__dividir" @click="abrirDividir">Dividir cuenta</button>
+            <button class="cobro__confirmar" :disabled="!puedeConfirmar || guardando" @click="confirmarCobro">
+              {{ guardando ? 'Cobrando...' : `Confirmar Q${montoACobrar}` }}
+            </button>
+          </div>
         </div>
       </div>
     </Transition>
@@ -499,11 +589,11 @@
   <div class="dividir">
 
     <div class="dividir__head">
-      <div>
-        <h2>Dividir cuenta</h2>
-        <p class="dividir__sub">Total Q{{ montoACobrar }}</p>
+      <div class="dividir__head-textos">
+        <h2 class="dividir__titulo">Dividir cuenta</h2>
+        <p class="dividir__sub">Elige lo que paga cada persona y registra su pago.</p>
       </div>
-      <button class="dividir__x" @click="cerrarDividir">✕</button>
+      <button class="dividir__x" aria-label="Cerrar" @click="cerrarDividir">✕</button>
     </div>
 
     <div class="dividir__cuerpo">
@@ -511,27 +601,30 @@
       <!-- Columna productos -->
       <div class="dividir__col">
         <div class="dividir__col-head">
-          <span class="dividir__label">Sin pagar</span>
+          <span class="dividir__label">Por cobrar</span>
           <div class="dividir__acciones-mini">
-            <button v-if="itemsDisponibles.length" @click="seleccionarTodos">Todos</button>
-            <button v-if="itemsSeleccionados.size" @click="limpiarSeleccion">Ninguno</button>
+            <button v-if="itemsDisponibles.length" class="dividir__mini" @click="seleccionarTodos">Seleccionar todo</button>
+            <button v-if="itemsSeleccionados.size" class="dividir__mini" @click="limpiarSeleccion">Quitar selección</button>
           </div>
         </div>
 
-        <div class="dividir__chips">
+        <div class="dividir__items">
           <button
             v-for="item in itemsDisponibles"
             :key="item.uid"
-            class="chip"
-            :class="{ 'chip--sel': itemsSeleccionados.has(item.uid) }"
+            class="item-div"
+            :class="{ 'item-div--sel': itemsSeleccionados.has(item.uid) }"
             @click="toggleItem(item.uid)"
           >
-            <span class="chip__nombre">{{ item.nombre }}</span>
-            <span class="chip__precio">Q{{ item.precio }}</span>
+            <span class="item-div__check">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </span>
+            <span class="item-div__nombre">{{ item.nombre }}</span>
+            <span class="item-div__precio">Q{{ item.precio }}</span>
           </button>
 
           <p v-if="!itemsDisponibles.length" class="dividir__vacio">
-            ✅ Todo pagado
+            Todo está cobrado. Ya puedes finalizar.
           </p>
         </div>
       </div>
@@ -540,40 +633,66 @@
       <div class="dividir__col dividir__col--cobro">
 
         <div class="dividir__monto">
-          <span>A cobrar</span>
-          <strong>Q{{ totalSeleccionado }}</strong>
+          <span class="dividir__monto-label">Paga esta persona</span>
+          <span class="dividir__monto-valor">Q{{ totalSeleccionado }}</span>
         </div>
 
-        <div class="dividir__metodos">
+        <div class="segmento" role="radiogroup" aria-label="Método de pago">
           <button
-            class="metodo-btn"
-            :class="{ 'metodo-btn--activo': metodoPago === 'efectivo' }"
+            class="segmento__opcion"
+            :class="{ 'segmento__opcion--activa': metodoPago === 'efectivo' }"
+            role="radio"
+            :aria-checked="metodoPago === 'efectivo'"
             @click="metodoPago = 'efectivo'"
-          >💵 Efectivo</button>
+          >
+            <svg class="segmento__icono" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="2.5" y="6" width="19" height="12" rx="2" />
+              <circle cx="12" cy="12" r="2.6" />
+              <path d="M6 9.5v5M18 9.5v5" />
+            </svg>
+            <span class="segmento__texto">Efectivo</span>
+          </button>
           <button
-            class="metodo-btn"
-            :class="{ 'metodo-btn--activo': metodoPago === 'tarjeta' }"
+            class="segmento__opcion"
+            :class="{ 'segmento__opcion--activa': metodoPago === 'tarjeta' }"
+            role="radio"
+            :aria-checked="metodoPago === 'tarjeta'"
             @click="metodoPago = 'tarjeta'"
-          >💳 Tarjeta</button>
+          >
+            <svg class="segmento__icono" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+              <path d="M2.5 10h19M6 15h4" />
+            </svg>
+            <span class="segmento__texto">Tarjeta</span>
+          </button>
         </div>
 
         <div v-if="metodoPago === 'efectivo' && totalSeleccionado > 0" class="dividir__efectivo">
-          <input
-            v-model.number="efectivoParcial"
-            type="number"
-            class="dividir__input"
-            placeholder="Recibido"
-          />
-          <div class="dividir__sugs">
+          <div class="campo-monto campo-monto--compacto">
+            <span class="campo-monto__prefijo">Q</span>
+            <input
+              v-model.number="efectivoParcial"
+              type="number"
+              inputmode="decimal"
+              class="campo-monto__input"
+              placeholder="Recibido (opcional)"
+            />
+          </div>
+          <div class="sugerencias">
             <button
               v-for="s in sugerenciasParcial"
               :key="s"
               class="sug-btn"
+              :class="{ 'sug-btn--activa': efectivoParcial === s }"
               @click="efectivoParcial = s"
-            >Q{{ s }}</button>
+            >
+              <span class="sug-btn__monto">Q{{ s }}</span>
+              <span v-if="s === totalSeleccionado" class="sug-btn__etiqueta">Exacto</span>
+            </button>
           </div>
-          <div v-if="efectivoParcial >= totalSeleccionado" class="dividir__cambio">
-            <span>Cambio</span><strong>Q{{ efectivoParcial - totalSeleccionado }}</strong>
+          <div v-if="efectivoParcial >= totalSeleccionado" class="resultado resultado--cambio">
+            <span class="resultado__label">Cambio</span>
+            <span class="resultado__valor">Q{{ efectivoParcial - totalSeleccionado }}</span>
           </div>
         </div>
 
@@ -582,19 +701,22 @@
           :disabled="!puedeCobrarParcial"
           @click="cobrarParcial"
         >
-          Cobrar Q{{ totalSeleccionado }}
+          {{ totalSeleccionado > 0 ? `Registrar pago · Q${totalSeleccionado}` : 'Selecciona productos' }}
         </button>
 
         <!-- Pagos registrados -->
         <div v-if="pagosRealizados.length" class="dividir__pagos">
           <span class="dividir__label">Pagos registrados</span>
           <div v-for="(p, i) in pagosRealizados" :key="i" class="pago-row">
-            <span class="pago-row__metodo">{{ p.metodo === 'efectivo' ? '💵' : '💳' }}</span>
+            <span class="pago-row__num">{{ i + 1 }}</span>
             <div class="pago-row__info">
-              <strong>Q{{ p.monto }}</strong>
-              <span>{{ p.items.join(', ') }}</span>
+              <span class="pago-row__monto">
+                Q{{ p.monto }}
+                <span class="pago-row__metodo">{{ p.metodo === 'efectivo' ? 'Efectivo' : 'Tarjeta' }}</span>
+              </span>
+              <span class="pago-row__items">{{ p.items.join(', ') }}</span>
             </div>
-            <button class="pago-row__x" @click="quitarPago(i)">✕</button>
+            <button class="pago-row__x" aria-label="Quitar pago" @click="quitarPago(i)">✕</button>
           </div>
         </div>
 
@@ -602,12 +724,18 @@
     </div>
 
     <div class="dividir__footer">
-      <div class="dividir__resumen">
-        <span>Cobrado: <strong>Q{{ totalCobradoParcial }}</strong></span>
-        <span v-if="faltaPorCobrar > 0" class="dividir__falta">
-          Falta: <strong>Q{{ faltaPorCobrar }}</strong>
-        </span>
-        <span v-else class="dividir__ok">✅ Completo</span>
+      <div class="dividir__progreso">
+        <div class="dividir__progreso-textos">
+          <span class="dividir__cobrado">
+            Cobrado Q{{ totalCobradoParcial }}
+            <span class="dividir__de">de Q{{ montoACobrar }}</span>
+          </span>
+          <span v-if="faltaPorCobrar > 0" class="dividir__falta">Falta Q{{ faltaPorCobrar }}</span>
+          <span v-else class="dividir__ok">Cuenta completa</span>
+        </div>
+        <div class="dividir__barra">
+          <div class="dividir__barra-relleno" :style="{ width: porcentajeCobrado + '%' }"></div>
+        </div>
       </div>
       <button
         class="dividir__confirmar"
@@ -712,6 +840,98 @@
   </div>
 </div>
 
+<!-- ── MODAL GASTOS DEL TURNO ── -->
+<div v-if="modalGastos" class="cobro-overlay cobro-overlay--top" @click.self="modalGastos = false">
+  <div class="gastos">
+    <div class="gastos__head">
+      <div class="gastos__head-textos">
+        <h2 class="gastos__titulo">Gastos del turno</h2>
+        <p class="gastos__sub">Dinero que sale de la caja: compras, pagos o retiros.</p>
+      </div>
+      <button class="cobro__cerrar" aria-label="Cerrar" @click="modalGastos = false">✕</button>
+    </div>
+
+    <!-- Registrar un gasto -->
+    <div class="gastos__form">
+      <div class="gastos__campos">
+        <div class="gastos__campo">
+          <label class="cobro__label" for="gasto-monto">Monto</label>
+          <div class="campo-monto campo-monto--compacto">
+            <span class="campo-monto__prefijo">Q</span>
+            <input
+              id="gasto-monto"
+              v-model.number="gastoMonto"
+              type="number"
+              inputmode="decimal"
+              class="campo-monto__input"
+              placeholder="0"
+            />
+          </div>
+        </div>
+        <div class="gastos__campo gastos__campo--concepto">
+          <label class="cobro__label" for="gasto-concepto">Concepto</label>
+          <input
+            id="gasto-concepto"
+            v-model="gastoConcepto"
+            type="text"
+            maxlength="40"
+            enterkeyhint="done"
+            class="gastos__concepto"
+            placeholder="Ej. carne, gas, proveedor"
+            @keyup.enter="registrarGasto"
+          />
+        </div>
+      </div>
+      <div class="gastos__chips">
+        <button
+          v-for="c in conceptosRapidosGasto"
+          :key="c"
+          class="gastos__chip"
+          :class="{ 'gastos__chip--activo': gastoConcepto === c }"
+          @click="gastoConcepto = c"
+        >{{ c }}</button>
+      </div>
+      <button class="gastos__registrar" :disabled="!puedeRegistrarGasto" @click="registrarGasto">
+        {{ puedeRegistrarGasto ? `Registrar gasto · Q${Number(gastoMonto)}` : 'Registrar gasto' }}
+      </button>
+    </div>
+
+    <!-- Gastos ya registrados -->
+    <div class="gastos__lista">
+      <span class="cobro__label">Registrados en este turno</span>
+      <p v-if="!gastosTurno.length" class="gastos__vacio">Todavía no hay gastos en este turno.</p>
+      <div v-for="g in gastosTurno" :key="g.id" class="gasto-row" :class="{ 'gasto-row--confirmando': gastoAEliminar === g.id }">
+        <template v-if="gastoAEliminar !== g.id">
+          <div class="gasto-row__info">
+            <span class="gasto-row__concepto">{{ g.concepto }}</span>
+            <span class="gasto-row__hora">{{ formatHora(g.fecha) }}</span>
+          </div>
+          <span class="gasto-row__monto">−Q{{ g.monto }}</span>
+          <button class="pago-row__x" aria-label="Eliminar gasto" @click="gastoAEliminar = g.id">✕</button>
+        </template>
+        <template v-else>
+          <span class="gasto-row__pregunta">¿Eliminar "{{ g.concepto }}" de Q{{ g.monto }}?</span>
+          <div class="gasto-row__confirmar">
+            <button class="gasto-row__no" @click="gastoAEliminar = null">No</button>
+            <button class="gasto-row__si" @click="eliminarGasto(g.id)">Eliminar</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="gastos__resumen">
+      <div class="gastos__resumen-fila">
+        <span class="gastos__resumen-label">Total gastos</span>
+        <span class="gastos__resumen-valor">Q{{ totalGastos }}</span>
+      </div>
+      <div class="gastos__resumen-fila gastos__resumen-fila--caja">
+        <span class="gastos__resumen-label">Efectivo en caja</span>
+        <span class="gastos__resumen-valor">Q{{ efectivoEsperado }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL CERRAR TURNO ── -->
 <div v-if="modalCerrarTurno" class="turno-overlay" @click.self="modalCerrarTurno = false">
   <div class="turno-modal">
@@ -734,6 +954,12 @@
           <strong class="cierre-stat__valor">Q{{ ventasEfectivo }}</strong>
         </div>
         <div class="cierre-stat">
+          <span class="cierre-stat__label">Gastos</span>
+          <strong class="cierre-stat__valor" :class="{ 'cierre-stat__valor--gasto': totalGastos > 0 }">
+            {{ totalGastos > 0 ? `−Q${totalGastos}` : 'Q0' }}
+          </strong>
+        </div>
+        <div class="cierre-stat">
           <span class="cierre-stat__label">Ventas tarjeta</span>
           <strong class="cierre-stat__valor">Q{{ ventasTarjeta }}</strong>
         </div>
@@ -741,7 +967,14 @@
           <span class="cierre-stat__label">Total vendido</span>
           <strong class="cierre-stat__valor">Q{{ ventasEfectivo + ventasTarjeta }}</strong>
         </div>
+        <div class="cierre-stat">
+          <span class="cierre-stat__label">Pedidos</span>
+          <strong class="cierre-stat__valor">{{ pedidosTurno.length }}</strong>
+        </div>
       </div>
+      <p class="cierre-nota">
+        En caja = fondo + ventas en efectivo − gastos. Lo cobrado con tarjeta no está en la caja.
+      </p>
     </div>
 
     <label class="turno-modal__label">Efectivo contado en caja</label>
@@ -765,6 +998,9 @@
       <span v-else-if="diferenciaCaja < 0">Faltan Q{{ Math.abs(diferenciaCaja) }}</span>
       <span v-else>Sobran Q{{ diferenciaCaja }}</span>
     </div>
+    <p v-else class="cierre-sin-conteo">
+      Si cierras sin escribir lo contado, el turno queda en el historial como "sin conteo".
+    </p>
 
     <div class="turno-modal__acciones">
       <button class="turno-modal__cancelar" @click="modalCerrarTurno = false">
@@ -810,8 +1046,9 @@ import { signOut } from 'firebase/auth'
 import productosData from '../../assets/data/productos.json'
 import { db, auth } from '../../firebase.js'
 import { reiniciarContadorPedidos, registrarNumeroUsado } from '../../utils/pedidosNumero.js'
+import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
 import {
-  collection, onSnapshot, doc, updateDoc, setDoc, orderBy,
+  collection, onSnapshot, doc, updateDoc, setDoc, arrayUnion, orderBy,
   query, serverTimestamp, writeBatch, getDocs, getDoc, where, limit
 } from 'firebase/firestore'
 import { useExtras } from '../../composables/useExtras.js'
@@ -831,11 +1068,11 @@ const posicionesPos = {
   21: 14.5
 }
 
-// Categorías que el cajero despacha directo (bebidas, postres) y que
-// cocina NO tiene que preparar. Si lo único que se agrega a un pedido
-// ya "listo" es algo de estas categorías, el pedido se queda en "listo"
-// y no vuelve a aparecer en la pantalla de Cocina.
-const CATEGORIAS_SIN_COCINA = ['Frescos', 'Postres']
+// Qué prepara cocina y qué despacha caja (bebidas, postres) vive en
+// utils/cocina.js, compartido con CocinaView.vue. Si lo único que se
+// agrega a un pedido ya "listo" es bebida/postre, el pedido se queda en
+// "listo" y no vuelve a aparecer en la pantalla de Cocina.
+
 // ── Productos fusionados solo para el POS ──
 // `posicion` = dónde aparece el botón en la cuadrícula (los productos
 // normales se ordenan por su id; 2.5 = entre el id 2 y el 3, etc.)
@@ -1381,7 +1618,7 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
     // cuánto de cada producto es nuevo (lo que no había antes), para que
     // en Cocina quede claro qué falta por preparar — no todo el pedido
     // otra vez, solo lo que se acaba de agregar. Las bebidas/postres
-    // (CATEGORIAS_SIN_COCINA) no se marcan: esas las despacha el cajero
+    // (ver utils/cocina.js) no se marcan: esas las despacha el cajero
     // directo, cocina no tiene nada que hacer con ellas.
     const claveLinea = p => `${p.nombre}||${p.opcion || ''}`
     let productosParaGuardar = productos
@@ -1395,7 +1632,7 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       productosParaGuardar = productos.map(p => {
         const antes = cantidadesAntes[claveLinea(p)] || 0
         const nuevos = Math.max(0, p.cantidad - antes)
-        if (nuevos === 0 || CATEGORIAS_SIN_COCINA.includes(p.categoria)) return p
+        if (nuevos === 0 || !vaACocina(p)) return p
         hayAlgoQuePrepararNuevo = true
         return { ...p, cantidadNueva: nuevos }
       })
@@ -1564,6 +1801,13 @@ const faltaPorCobrar = computed(() =>
   Math.max(0, montoACobrar.value - totalCobradoParcial.value)
 )
 
+// Para la barra de progreso de "Dividir cuenta"
+const porcentajeCobrado = computed(() =>
+  montoACobrar.value > 0
+    ? Math.min(100, Math.round((totalCobradoParcial.value / montoACobrar.value) * 100))
+    : 0
+)
+
 // Sugerencias para el pago parcial
 const sugerenciasParcial = computed(() => {
   const m = totalSeleccionado.value
@@ -1574,10 +1818,18 @@ const sugerenciasParcial = computed(() => {
   return [...set].filter(v => v >= m).sort((a, b) => a - b).slice(0, 4)
 })
 
+// El efectivo recibido es opcional: si el cajero no escribe nada (ya hizo
+// la cuenta mental), se toma como pago exacto, sin cambio. Si sí escribe
+// un monto, tiene que alcanzar: un monto menor casi siempre es un error
+// de dedo y registraría efectivo que no entró a la caja.
+function sinMontoRecibido(v) {
+  return v === null || v === undefined || v === '' || Number(v) === 0
+}
+
 const puedeCobrarParcial = computed(() => {
   if (totalSeleccionado.value <= 0) return false
   if (metodoPago.value === 'tarjeta') return true
-  return efectivoParcial.value >= totalSeleccionado.value
+  return sinMontoRecibido(efectivoParcial.value) || efectivoParcial.value >= totalSeleccionado.value
 })
 
 const sugerencias = computed(() => {
@@ -1589,7 +1841,9 @@ const sugerencias = computed(() => {
 })
 
 const puedeConfirmar = computed(() =>
-  metodoPago.value === 'tarjeta' || efectivoRecibido.value >= montoACobrar.value
+  metodoPago.value === 'tarjeta' ||
+  sinMontoRecibido(efectivoRecibido.value) ||
+  efectivoRecibido.value >= montoACobrar.value
 )
 
 function abrirCobro(nombre) {
@@ -1632,11 +1886,15 @@ function cerrarCobro() {
 
 async function confirmarCobro() {
   if (guardando.value) return
+  // Campo vacío = pagó exacto (recibido = total, cambio 0)
+  const recibidoEfectivo = sinMontoRecibido(efectivoRecibido.value)
+    ? montoACobrar.value
+    : Number(efectivoRecibido.value)
   const datosPago = {
     metodo: metodoPago.value,
     monto: montoACobrar.value,
-    recibido: metodoPago.value === 'efectivo' ? efectivoRecibido.value : null,
-    cambio: metodoPago.value === 'efectivo' ? efectivoRecibido.value - montoACobrar.value : null,
+    recibido: metodoPago.value === 'efectivo' ? recibidoEfectivo : null,
+    cambio: metodoPago.value === 'efectivo' ? recibidoEfectivo - montoACobrar.value : null,
     totalEfectivo: metodoPago.value === 'efectivo' ? montoACobrar.value : 0,
     totalTarjeta: metodoPago.value === 'tarjeta' ? montoACobrar.value : 0
   }
@@ -1709,13 +1967,17 @@ function limpiarSeleccion() {
 function cobrarParcial() {
   const seleccionados = itemsDivididos.value
     .filter(i => itemsSeleccionados.value.has(i.uid))
+  // Campo vacío = pagó exacto
+  const recibidoParcial = sinMontoRecibido(efectivoParcial.value)
+    ? totalSeleccionado.value
+    : Number(efectivoParcial.value)
 
   pagosRealizados.value.push({
     monto: totalSeleccionado.value,
     metodo: metodoPago.value,
-    recibido: metodoPago.value === 'efectivo' ? efectivoParcial.value : null,
+    recibido: metodoPago.value === 'efectivo' ? recibidoParcial : null,
     cambio: metodoPago.value === 'efectivo'
-      ? efectivoParcial.value - totalSeleccionado.value
+      ? recibidoParcial - totalSeleccionado.value
       : null,
     items: seleccionados.map(i => i.nombre),
     hora: new Date().toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })
@@ -1803,7 +2065,7 @@ async function confirmarDivision() {
 // bebidas/postres). Si un producto no trae categoría (pedidos viejos),
 // lo tratamos como de cocina por seguridad.
 function necesitaCocina(pedido) {
-  return (pedido.productos || []).some(p => !CATEGORIAS_SIN_COCINA.includes(p.categoria))
+  return pedidoNecesitaCocina(pedido)
 }
 
 const pedidoEnCocina = ref(null)   // pedido del aviso "todavía en preparación"
@@ -1874,8 +2136,83 @@ const ventasTarjeta = computed(() =>
   }, 0)
 )
 
+// ── Gastos del turno ──
+// Se guardan dentro del documento del turno (campo "gastos"), así cada
+// cierre queda con su propio registro. Son salidas de efectivo de la caja.
+const modalGastos = ref(false)
+const gastoMonto = ref(null)
+const gastoConcepto = ref('')
+const gastoAEliminar = ref(null)   // id del gasto que espera confirmación
+// Conceptos frecuentes para no tener que escribir (edítalos a tu gusto)
+const conceptosRapidosGasto = ['Carne', 'Verduras', 'Gas', 'Desechables', 'Proveedor', 'Retiro']
+
+function fechaEnMs(f) {
+  if (f?.toDate) return f.toDate().getTime()
+  if (f instanceof Date) return f.getTime()
+  return 0
+}
+
+function formatHora(f) {
+  const ms = fechaEnMs(f)
+  return ms ? new Date(ms).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' }) : ''
+}
+
+const gastosTurno = computed(() =>
+  [...(turnoActual.value?.gastos || [])].sort((a, b) => fechaEnMs(a.fecha) - fechaEnMs(b.fecha))
+)
+
+const totalGastos = computed(() =>
+  gastosTurno.value.reduce((s, g) => s + (Number(g.monto) || 0), 0)
+)
+
+const puedeRegistrarGasto = computed(() =>
+  Number(gastoMonto.value) > 0 && gastoConcepto.value.trim().length > 0
+)
+
+function abrirGastos() {
+  menuAbierto.value = false
+  gastoMonto.value = null
+  gastoConcepto.value = ''
+  gastoAEliminar.value = null
+  modalGastos.value = true
+}
+
+function registrarGasto() {
+  if (!puedeRegistrarGasto.value || !turnoActual.value) return
+  const gasto = {
+    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    concepto: gastoConcepto.value.trim(),
+    monto: Number(gastoMonto.value),
+    // serverTimestamp() no se puede usar dentro de un arreglo: hora de la tablet
+    fecha: new Date()
+  }
+  // Sin await (igual que los pedidos): aparece al instante y se sincroniza solo
+  updateDoc(doc(db, 'turnos', turnoActual.value.id), { gastos: arrayUnion(gasto) })
+    .catch(e => {
+      console.error('Error al registrar gasto:', e)
+      mostrarAviso(`No se pudo registrar el gasto "${gasto.concepto}". Intenta otra vez.`)
+    })
+  // Limpiar el formulario también evita registrar el mismo gasto dos veces
+  gastoMonto.value = null
+  gastoConcepto.value = ''
+}
+
+function eliminarGasto(id) {
+  if (!turnoActual.value) return
+  const restantes = (turnoActual.value.gastos || []).filter(g => g.id !== id)
+  updateDoc(doc(db, 'turnos', turnoActual.value.id), { gastos: restantes })
+    .catch(e => {
+      console.error('Error al eliminar gasto:', e)
+      mostrarAviso('No se pudo eliminar el gasto. Intenta otra vez.')
+    })
+  gastoAEliminar.value = null
+}
+
+// Lo que debe haber físicamente en la caja. Lo cobrado con tarjeta no se
+// suma (no está en efectivo) y los gastos se restan. Es el mismo número
+// que se muestra en el menú ("Efectivo en caja") y en el cierre de turno.
 const efectivoEsperado = computed(() =>
-  (turnoActual.value?.fondoInicial || 0) + ventasEfectivo.value
+  (turnoActual.value?.fondoInicial || 0) + ventasEfectivo.value - totalGastos.value
 )
 
 const diferenciaCaja = computed(() =>
@@ -1993,6 +2330,17 @@ function depurarAntiguos() {
 }
 
 // ── Helpers ──
+// Estado en texto simple, para la etiqueta de color del ticket
+function textoEstado(e) {
+  return {
+    guardado:  'Guardado',
+    nuevo:     'Nuevo',
+    listo:     'Listo',
+    entregado: 'Entregado',
+    cancelado: 'Cancelado'
+  }[e] || e
+}
+
 function etiquetaEstado(e) {
   return {
     guardado:  '🔵 Guardado',
@@ -2038,6 +2386,7 @@ function abrirTurno() {
     ventasTarjeta: 0,
     totalVentas: 0,
     cantidadPedidos: 0,
+    gastos: [],
     efectivoContado: null,
     diferencia: null
   }).catch(e => {
@@ -2066,6 +2415,12 @@ function intentarCerrarTurno() {
 
 function cerrarTurno() {
   if (!turnoActual.value) return
+  // Si no se escribió cuánto se contó, se guarda como "sin conteo" (null),
+  // no como Q0: antes eso hacía que el historial marcara "Cuadrado" aunque
+  // nadie hubiera contado la caja.
+  const contado = efectivoContado.value === null || efectivoContado.value === ''
+    ? null
+    : Number(efectivoContado.value)
   updateDoc(doc(db, 'turnos', turnoActual.value.id), {
     abierto: false,
     fechaCierre: serverTimestamp(),
@@ -2073,8 +2428,10 @@ function cerrarTurno() {
     ventasTarjeta: ventasTarjeta.value,
     totalVentas: ventasEfectivo.value + ventasTarjeta.value,
     cantidadPedidos: pedidosTurno.value.length,
-    efectivoContado: Number(efectivoContado.value) || 0,
-    diferencia: diferenciaCaja.value
+    totalGastos: totalGastos.value,
+    efectivoEsperado: efectivoEsperado.value,
+    efectivoContado: contado,
+    diferencia: contado === null ? null : contado - efectivoEsperado.value
   }).catch(e => {
     console.error('Error al cerrar turno:', e)
     mostrarAviso('No se pudo cerrar el turno. Revisa la conexión e intenta otra vez.')
@@ -2324,6 +2681,22 @@ onUnmounted(() => {
 .turno-stat { display: flex; flex-direction: column; gap: 3px; }
 .turno-stat__label { font-size: 11.5px; font-weight: 600; color: #b3a394; }
 .turno-stat__valor { font-size: 15px; font-weight: 700; color: #2c1a0e; }
+/* Gastos: ocupa toda la fila, etiqueta a la izquierda y monto a la derecha */
+.turno-stat--fila {
+  grid-column: 1 / -1; flex-direction: row; align-items: baseline; justify-content: space-between;
+  padding-top: 12px; border-top: 1px dashed #f0e4d8;
+}
+.turno-stat__valor--gasto { color: #b3261e; }
+
+/* Efectivo en caja: banda oscura para que no se confunda con "Total vendido" */
+.turno-caja {
+  background: #2c1a0e; border-radius: 12px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.turno-caja__fila { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.turno-caja__label { font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,0.75); }
+.turno-caja__valor { font-size: 22px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; }
+.turno-caja__nota { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); line-height: 1.35; }
 
 .drawer__acciones { margin-top: auto; display: flex; flex-direction: column; }
 
@@ -2477,108 +2850,161 @@ onUnmounted(() => {
 
 .lista-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 
-/* ── TICKET ── */
+/* ── TICKET DE PEDIDO (Activos / Comer acá / Entregados / Cancelados) ── */
+/* Tarjeta clara, igual que los productos y la pantalla de Cocina.
+   El color del estado vive en la franja izquierda y en la etiqueta. */
 .pedido {
-  background: #1a1a1a; border-radius: 16px; padding: 20px;
-  border: 1px solid rgba(255,255,255,0.08); position: relative;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #ffffff;
+  border: 1px solid #efe6dc;
+  border-left: 4px solid #d8c9b9;
+  border-radius: 16px;
+  padding: 16px 18px 14px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 1px 2px rgba(44,26,14,0.04), 0 6px 18px rgba(44,26,14,0.05);
+  position: relative;
 }
-.pedido--editable { cursor: pointer; transition: border-color 0.1s; }
-.pedido--editable:hover { border-color: #3a9bd5; }
-.pedido--nuevo     { border-left: 4px solid #e8621a; }
-.pedido--guardado  { border-left: 4px solid #3a9bd5; }
-.pedido--listo     { border-left: 4px solid #25d366; }
-.pedido--entregado { border-left: 4px solid #f5a623; }
-.pedido--cancelado { border-left: 4px solid #666; opacity: 0.4; }
+.pedido--nuevo     { border-left-color: #e8621a; }
+.pedido--guardado  { border-left-color: #2f7fc1; }
+.pedido--listo     { border-left-color: #2f8c4a; }
+.pedido--entregado { border-left-color: #b3a394; }
+.pedido--cancelado { border-left-color: #d6cbbf; opacity: 0.6; }
+.pedido--editable { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
+.pedido--editable:hover {
+  border-color: #e2d3c3;
+  box-shadow: 0 1px 2px rgba(44,26,14,0.05), 0 10px 26px rgba(44,26,14,0.09);
+}
 
-.pedido__header {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  flex-wrap: wrap; margin-bottom: 12px;
+/* Fila superior: estado · etiquetas · tiempo */
+.pedido__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pedido__estado {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+  padding: 4px 10px 4px 9px; border-radius: 999px;
+  background: #f4ede5; color: #6b5444;
 }
-.pedido__estado-badge { font-size: 16px; font-weight: 700; color: white; }
+.pedido__estado-punto { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.pedido__estado--nuevo     { background: rgba(232,98,26,0.10); color: #c04e10; }
+.pedido__estado--guardado  { background: rgba(47,127,193,0.10); color: #23679f; }
+.pedido__estado--listo     { background: rgba(47,140,74,0.11); color: #24733b; }
+.pedido__estado--entregado { background: #f4ede5; color: #8a7362; }
+.pedido__estado--cancelado { background: #f4ede5; color: #a3948a; }
 .pedido__previo {
-  font-size: 11px; font-weight: 800; color: #f5a623;
-  background: rgba(245,166,35,0.15); padding: 3px 9px; border-radius: 999px;
-  white-space: nowrap; font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11.5px; font-weight: 700; color: #a4640f;
+  background: #fdf3e1; padding: 4px 9px; border-radius: 999px; white-space: nowrap;
 }
-.pedido__tiempo { font-size: 13px; color: rgba(255,255,255,0.4); font-weight: 600; }
+.pedido__tiempo { margin-left: auto; font-size: 12.5px; font-weight: 600; color: #b3a394; white-space: nowrap; }
 
-.pedido__info { margin-bottom: 12px; }
-.pedido__cliente {
-  font-size: 20px; font-weight: 700; color: white; margin: 0 0 4px;
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-}
+/* Cliente */
+.pedido__titulo { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.pedido__cliente { font-size: 19px; font-weight: 800; color: #2c1a0e; line-height: 1.2; }
 .pedido__numero {
-  font-size: 12px; background: rgba(255,255,255,0.1);
-  padding: 3px 10px; border-radius: 100px; color: rgba(255,255,255,0.6);
-  font-weight: 700;
+  font-size: 12px; font-weight: 700; color: #8a7362;
+  background: #f4ede5; padding: 2px 8px; border-radius: 6px;
+  font-variant-numeric: tabular-nums;
 }
-.pedido__sucursal { font-size: 15px; color: #e8621a; margin: 0 0 4px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; }
-.pedido__origen-web { font-size: 15px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; }
-.pedido__comentario { font-size: 14px; color: rgba(255,255,255,0.5); margin: 6px 0 0; font-style: italic; }
-.pedido__pagado { font-size: 13px; color: #25d366; margin: 6px 0 0; font-weight: 700; font-family: 'Plus Jakarta Sans', sans-serif; }
-.pedido__pendiente { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: #f5a623; margin: 6px 0 0; font-weight: 700; }
+.pedido__meta {
+  margin: -6px 0 0; font-size: 13px; font-weight: 600; color: #8a7362;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.pedido__meta-sep { font-size: 13px; color: #d6c7b8; }
+.pedido__web {
+  font-size: 11px; font-weight: 700; color: #23679f;
+  background: rgba(47,127,193,0.10); padding: 2px 7px; border-radius: 5px;
+}
 
+.pedido__comentario {
+  margin: 0; font-size: 13px; font-weight: 500; color: #6b5444; line-height: 1.4;
+  background: #faf6f1; border-radius: 10px; padding: 8px 10px;
+}
+.pedido__comentario-label {
+  font-size: 11px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-right: 6px;
+}
+
+/* Productos */
 .pedido__productos {
-  border-top: 1px solid rgba(255,255,255,0.08);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  padding: 12px 0; margin-bottom: 12px;
-  display: flex; flex-direction: column; gap: 8px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  list-style: none; margin: 0; padding: 12px 0 0;
+  border-top: 1px solid #f2ebe3;
+  display: flex; flex-direction: column; gap: 9px;
 }
 .pedido__producto {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  display: grid; grid-template-columns: 30px 1fr auto; align-items: start; gap: 6px;
+  font-size: 15px;
 }
+.pedido__cant { font-size: 14px; font-weight: 700; color: #b3a394; padding-top: 1px; font-variant-numeric: tabular-nums; }
 .pedido__producto-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.pedido__producto-texto > span:first-child {
-  font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.92);
-}
-.pedido__producto-nota { font-size: 12px; font-weight: 600; color: #f5a623; }
+.pedido__producto-nombre { font-size: 15px; font-weight: 600; color: #2c1a0e; line-height: 1.3; }
+.pedido__producto-nota { font-size: 12.5px; font-weight: 600; color: #b8691f; line-height: 1.3; }
 .pedido__producto-badge-nuevo {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 10.5px; font-weight: 800; color: #3a9bd5;
-  background: rgba(58,155,213,0.18);
-  padding: 2px 8px; border-radius: 999px;
-  vertical-align: middle;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  display: inline-block; margin-left: 6px; vertical-align: 1px;
+  font-size: 10.5px; font-weight: 800; color: #23679f;
+  background: rgba(47,127,193,0.12); padding: 2px 7px; border-radius: 999px;
 }
-.pedido__producto-precio { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.92); flex-shrink: 0; margin-left: 10px; }
+.pedido__producto-precio { font-size: 15px; font-weight: 700; color: #2c1a0e; font-variant-numeric: tabular-nums; }
 
-.pedido__footer {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 10px; flex-wrap: wrap;
+/* Pagos divididos */
+.pedido__pagos {
+  background: #faf6f1; border-radius: 10px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
 }
+.pedido__pagos-titulo {
+  font-size: 11px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.pedido__pago { display: flex; flex-direction: column; gap: 1px; }
+.pedido__pago-monto { font-size: 13.5px; font-weight: 700; color: #2c1a0e; }
+.pedido__pago-metodo { font-size: 12px; font-weight: 600; color: #8a7362; margin-left: 4px; }
+.pedido__pago-items { font-size: 12px; font-weight: 500; color: #a3948a; }
 
-.pedido__totales { display: flex; flex-direction: column; gap: 2px; }
-.pedido__resta { font-size: 13px; color: #f5a623; font-weight: 700; }
+/* Total y estado del pago */
+.pedido__resumen {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;
+  padding-top: 12px; border-top: 1px solid #f2ebe3;
+  /* Cuando las tarjetas de una fila se estiran a la misma altura, el total
+     y los botones quedan alineados abajo en todas */
+  margin-top: auto;
+}
+.pedido__total-bloque { display: flex; flex-direction: column; gap: 1px; }
+.pedido__total-label {
+  font-size: 11px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.pedido__total { font-size: 22px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pedido__pago-estado {
+  font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px;
+  white-space: nowrap; margin-bottom: 2px;
+}
+.pedido__pago-estado--ok        { background: rgba(47,140,74,0.11); color: #24733b; }
+.pedido__pago-estado--pendiente { background: #fdf3e1; color: #a4640f; }
+.pedido__pago-estado--parcial   { background: #fdf3e1; color: #a4640f; }
 
-.pedido__total { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 20px; color: #f5a623; font-weight: 800; }
+/* Acciones */
 .pedido__acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.accion-btn {
+  height: 42px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.accion-btn--cobrar   { background: #e8621a; color: #ffffff; flex: 1; }
+.accion-btn--cobrar:hover { background: #c04e10; }
+.accion-btn--listo    { background: #2f8c4a; color: #ffffff; flex: 1; }
+.accion-btn--listo:hover { background: #24733b; }
+.accion-btn--entregar { background: #2c1a0e; color: #ffffff; flex: 1; }
+.accion-btn--entregar:hover { background: #45301f; }
+.accion-btn--en-cocina {
+  background: #faf6f1; color: #8a7362; border: 1px dashed #dccbb9; flex: 1;
+}
+.accion-btn__punto {
+  width: 8px; height: 8px; border-radius: 50%; background: #e8a521; flex-shrink: 0;
+  animation: pulso 2.4s infinite;
+}
+.accion-btn--cancelar { background: transparent; color: #a3948a; border-color: #efe6dc; }
+.accion-btn--cancelar:hover { color: #cc0000; border-color: rgba(204,0,0,0.25); background: rgba(204,0,0,0.05); }
 
 .pedido__hint {
-  font-size: 11px; color: rgba(255,255,255,0.25); margin: 10px 0 0;
-  text-align: center; letter-spacing: 0.05em; font-weight: 600;
-}
-
-.accion-btn {
-  padding: 10px 18px; border-radius: 8px; border: none;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 700;
-  cursor: pointer; transition: background 0.1s;
-}
-.accion-btn--listo    { background: #25d366; color: white; }
-.accion-btn--listo:hover { background: #1fb855; }
-.accion-btn--cobrar   { background: #e8621a; color: white; }
-.accion-btn--cobrar:hover { background: #c04e10; }
-.accion-btn--entregar { background: #f5a623; color: white; }
-.accion-btn--entregar:hover { background: #e8900a; }
-.accion-btn--cancelar { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
-.accion-btn--cancelar:hover { background: #cc0000; color: white; }
-.accion-btn--en-cocina {
-  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7);
-  border: 1.5px dashed rgba(255,255,255,0.25);
+  margin: -2px 0 0; text-align: center;
+  font-size: 11.5px; font-weight: 600; color: #c9bbad;
 }
 
 /* ── MODALES DE CONFIRMACIÓN (en cocina / cancelar) ── */
@@ -2800,70 +3226,217 @@ onUnmounted(() => {
 
 /* ── COBRO ── */
 .cobro-overlay {
-  position: fixed; inset: 0; background: rgba(26,14,6,0.6);
+  position: fixed; inset: 0; background: rgba(26,14,6,0.55);
   display: flex; align-items: center; justify-content: center; z-index: 1100; padding: 20px;
 }
 .cobro {
-  background: white; border-radius: 22px; width: 100%; max-width: 440px;
-  padding: 24px; display: flex; flex-direction: column; gap: 18px;
+  background: #ffffff; border-radius: 22px; width: 100%; max-width: 460px;
+  padding: 22px; display: flex; flex-direction: column; gap: 16px;
   max-height: 92vh; overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
-.cobro__header { display: flex; justify-content: space-between; align-items: center; }
-.cobro__header h2 { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 24px; margin: 0; color: #2c1a0e; }
+.cobro__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cobro__header-textos { min-width: 0; }
+.cobro__titulo { margin: 0; font-size: 21px; font-weight: 800; color: #2c1a0e; }
+.cobro__sub {
+  margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: #8a7362;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .cobro__cerrar {
-  width: 34px; height: 34px; border-radius: 50%; border: none;
-  background: #f0e6d8; cursor: pointer; color: #6b3a1f;
+  width: 36px; height: 36px; border-radius: 50%; border: none; flex-shrink: 0;
+  background: #f4ede5; color: #6b5444; cursor: pointer; font-size: 15px; font-weight: 700;
 }
+.cobro__cerrar:hover { background: #ebe0d4; }
+
 .cobro__monto {
-  background: #1a0e06; border-radius: 14px; padding: 18px;
-  display: flex; justify-content: space-between; align-items: center;
-  color: rgba(255,255,255,0.6); font-weight: 700;
+  background: #faf6f1; border: 1px solid #f0e6da; border-radius: 16px;
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 2px;
 }
-.cobro__monto strong { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 32px; color: #f5a623; }
-.cobro__metodos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.metodo-btn {
-  padding: 18px; border-radius: 12px; border: 2px solid #e8ddd0; background: white;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 700;
-  color: #6b3a1f; cursor: pointer;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+.cobro__monto-label {
+  font-size: 11.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.07em;
 }
-.metodo-btn--activo { border-color: #e8621a; background: #fff5f0; color: #e8621a; }
-.cobro__efectivo { display: flex; flex-direction: column; gap: 12px; }
+.cobro__monto-valor {
+  font-size: 38px; font-weight: 800; color: #2c1a0e; line-height: 1.1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+
+/* Control segmentado: Efectivo / Tarjeta (cobro y dividir cuenta) */
+.segmento {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: #f4ede5; border-radius: 13px; padding: 4px;
+}
+.segmento__opcion {
+  height: 46px; border: none; border-radius: 10px; background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  color: #8a7362; cursor: pointer; transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.segmento__opcion--activa {
+  background: #ffffff; color: #2c1a0e;
+  box-shadow: 0 1px 2px rgba(44,26,14,0.08), 0 2px 8px rgba(44,26,14,0.06);
+}
+.segmento__icono {
+  width: 19px; height: 19px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;
+}
+.segmento__opcion--activa .segmento__icono { stroke: #e8621a; }
+.segmento__texto { font-size: 15px; font-weight: 700; }
+
+.cobro__efectivo { display: flex; flex-direction: column; gap: 10px; }
 .cobro__label {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: #8c6a52;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.07em;
 }
-.cobro__input {
-  padding: 16px; border: 2px solid #e8ddd0; border-radius: 12px;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 28px; font-weight: 800;
-  color: #2c1a0e; outline: none; text-align: center;
+.cobro__label-opcional {
+  font-size: 12px; font-weight: 600; color: #c9bbad;
+  text-transform: none; letter-spacing: 0;
 }
-.cobro__input:focus { border-color: #e8621a; }
-.cobro__sugerencias { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+/* Campo de monto con "Q" adelante */
+.campo-monto {
+  display: flex; align-items: center; gap: 6px;
+  border: 1.5px solid #e6dacd; border-radius: 14px; padding: 0 16px;
+  background: #ffffff; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.campo-monto:focus-within { border-color: #e8621a; box-shadow: 0 0 0 3px rgba(232,98,26,0.12); }
+.campo-monto__prefijo { font-size: 23px; font-weight: 700; color: #b3a394; }
+.campo-monto__input {
+  flex: 1; min-width: 0; height: 60px; border: none; outline: none; background: transparent;
+  font-size: 28px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums;
+}
+.campo-monto__input::placeholder { font-size: 28px; font-weight: 700; color: #d6c7b8; }
+.campo-monto--compacto .campo-monto__input { height: 52px; font-size: 24px; }
+.campo-monto--compacto .campo-monto__input::placeholder { font-size: 20px; }
+.campo-monto--compacto .campo-monto__prefijo { font-size: 20px; }
+
+/* Montos rápidos */
+/* Flex en vez de grid fijo de 4: con 3 montos se reparten todo el ancho */
+.sugerencias { display: flex; gap: 8px; }
 .sug-btn {
-  padding: 14px 4px; border-radius: 10px; border: 2px solid #e8ddd0; background: white;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700;
-  color: #6b3a1f; cursor: pointer; transition: border-color 0.1s, color 0.1s;
+  flex: 1; min-width: 0;
+  height: 52px; border-radius: 11px; border: 1.5px solid #e6dacd; background: #ffffff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  cursor: pointer; transition: border-color 0.12s, background 0.12s;
 }
-.sug-btn:hover { border-color: #e8621a; color: #e8621a; }
-.cobro__cambio {
+.sug-btn:hover { border-color: #d3c2b0; }
+.sug-btn--activa { border-color: #e8621a; background: #fff6f0; }
+.sug-btn__monto { font-size: 15px; font-weight: 700; color: #2c1a0e; font-variant-numeric: tabular-nums; }
+.sug-btn__etiqueta {
+  font-size: 10px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.sug-btn--activa .sug-btn__etiqueta { color: #e8621a; }
+
+/* Cambio / faltante */
+.resultado {
   display: flex; justify-content: space-between; align-items: center;
-  background: #eaf9ee; border: 1px solid #b7e8c4; border-radius: 12px;
-  padding: 14px 18px; font-weight: 700; color: #1a6b32;
+  border-radius: 13px; padding: 12px 16px;
 }
-.cobro__cambio strong { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 28px; }
-.cobro__falta {
-  background: #fff0f0; border: 1px solid #ffcccc; color: #cc0000;
-  border-radius: 12px; padding: 12px 16px; font-size: 14px;
-  font-weight: 700; margin: 0; text-align: center;
+.resultado__label { font-size: 14px; font-weight: 700; }
+.resultado__valor { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.resultado--cambio { background: rgba(47,140,74,0.09); color: #24733b; }
+.resultado--falta  { background: rgba(204,0,0,0.06); color: #b30000; }
+
+.cobro__nota-tarjeta {
+  margin: 0; font-size: 14px; font-weight: 500; color: #6b5444; line-height: 1.45;
+  background: #faf6f1; border-radius: 13px; padding: 14px 16px;
 }
+
+/* Acciones del cobro */
+.cobro__acciones { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin-top: 2px; }
+.cobro__dividir {
+  height: 56px; border-radius: 14px; border: 1.5px solid #e6dacd; background: #ffffff;
+  font-size: 15px; font-weight: 700; color: #6b5444; cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.cobro__dividir:hover { border-color: #d3c2b0; color: #2c1a0e; }
 .cobro__confirmar {
-  padding: 20px; border-radius: 14px; border: none; background: #25d366;
-  color: white; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px;
-  font-weight: 800; cursor: pointer; transition: background 0.1s;
+  height: 56px; border-radius: 14px; border: none; background: #2f8c4a; color: #ffffff;
+  font-size: 16.5px; font-weight: 800; cursor: pointer; transition: background 0.12s;
+  font-variant-numeric: tabular-nums;
 }
-.cobro__confirmar:disabled { opacity: 0.35; cursor: not-allowed; }
-.cobro__confirmar:hover:not(:disabled) { background: #1fb855; }
+.cobro__confirmar:hover:not(:disabled) { background: #24733b; }
+.cobro__confirmar:disabled { background: #e9e1d8; color: #b3a394; cursor: not-allowed; }
+
+/* ── GASTOS DEL TURNO ── */
+.gastos {
+  background: #ffffff; border-radius: 22px; width: 100%; max-width: 520px;
+  padding: 22px; display: flex; flex-direction: column; gap: 18px;
+  max-height: calc(100vh - 48px); overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(26,14,6,0.25);
+}
+.gastos__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.gastos__head-textos { min-width: 0; }
+.gastos__titulo { margin: 0; font-size: 21px; font-weight: 800; color: #2c1a0e; }
+.gastos__sub { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: #8a7362; }
+
+.gastos__form {
+  display: flex; flex-direction: column; gap: 10px;
+  background: #faf6f1; border: 1px solid #f0e6da; border-radius: 16px; padding: 14px;
+}
+.gastos__campos { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+.gastos__campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gastos__concepto {
+  width: 100%; height: 52px; border: 1.5px solid #e6dacd; border-radius: 14px; padding: 0 14px;
+  background: #ffffff; font-size: 16px; font-weight: 600; color: #2c1a0e; outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.gastos__concepto:focus { border-color: #e8621a; box-shadow: 0 0 0 3px rgba(232,98,26,0.12); }
+.gastos__concepto::placeholder { font-size: 15px; font-weight: 500; color: #c9bbad; }
+.gastos__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gastos__chip {
+  height: 34px; padding: 0 12px; border-radius: 999px; border: 1.5px solid #e6dacd; background: #ffffff;
+  font-size: 13px; font-weight: 700; color: #6b5444; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.gastos__chip--activo { border-color: #e8621a; background: #fff6f0; color: #c04e10; }
+.gastos__registrar {
+  height: 50px; border-radius: 13px; border: none; background: #2c1a0e; color: #ffffff;
+  font-size: 15px; font-weight: 800; cursor: pointer; font-variant-numeric: tabular-nums;
+  transition: background 0.12s;
+}
+.gastos__registrar:hover:not(:disabled) { background: #45301f; }
+.gastos__registrar:disabled { background: #e9e1d8; color: #b3a394; cursor: not-allowed; }
+
+.gastos__lista { display: flex; flex-direction: column; gap: 8px; }
+.gastos__vacio { margin: 0; padding: 6px 0; font-size: 13.5px; font-weight: 500; color: #a3948a; }
+.gasto-row {
+  display: flex; align-items: center; gap: 12px; min-height: 56px;
+  padding: 8px 10px 8px 14px; border: 1px solid #efe6dc; border-radius: 12px;
+}
+.gasto-row--confirmando { background: rgba(204,0,0,0.04); border-color: rgba(204,0,0,0.2); }
+.gasto-row__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gasto-row__concepto {
+  font-size: 15px; font-weight: 700; color: #2c1a0e;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gasto-row__hora { font-size: 12px; font-weight: 500; color: #a3948a; }
+.gasto-row__monto { font-size: 15.5px; font-weight: 800; color: #b3261e; font-variant-numeric: tabular-nums; }
+.gasto-row__pregunta { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: #2c1a0e; }
+.gasto-row__confirmar { display: flex; gap: 6px; flex-shrink: 0; }
+.gasto-row__no,
+.gasto-row__si {
+  height: 38px; padding: 0 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 800; cursor: pointer;
+}
+.gasto-row__no { border: 1px solid #e6dacd; background: #ffffff; color: #6b5444; }
+.gasto-row__si { border: none; background: #cc0000; color: #ffffff; }
+
+.gastos__resumen {
+  display: flex; flex-direction: column; gap: 10px;
+  padding-top: 14px; border-top: 1px solid #f2ebe3;
+}
+.gastos__resumen-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.gastos__resumen-label { font-size: 14px; font-weight: 700; color: #6b5444; }
+.gastos__resumen-valor { font-size: 17px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums; }
+.gastos__resumen-fila--caja { background: #2c1a0e; border-radius: 12px; padding: 12px 14px; align-items: center; }
+.gastos__resumen-fila--caja .gastos__resumen-label { color: rgba(255,255,255,0.75); }
+.gastos__resumen-fila--caja .gastos__resumen-valor { color: #ffffff; font-size: 22px; }
+
+@media (max-width: 560px) {
+  .gastos__campos { grid-template-columns: 1fr; }
+}
 
 /* ── ALERTA PEDIDO NUEVO ── */
 .alerta-overlay {
@@ -2993,15 +3566,23 @@ onUnmounted(() => {
 }
 .cierre-total__label { font-size: 13px; font-weight: 700; color: #8a7362; }
 .cierre-total__valor { font-size: 24px; font-weight: 800; color: #e8621a; }
+.cierre-nota { margin: -4px 0 0; font-size: 11.5px; font-weight: 500; color: #a3948a; line-height: 1.4; }
 
 .cierre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
 .cierre-stat { display: flex; flex-direction: column; gap: 3px; }
 .cierre-stat__label { font-size: 11.5px; font-weight: 600; color: #b3a394; }
 .cierre-stat__valor { font-size: 15px; font-weight: 700; color: #2c1a0e; }
+.cierre-stat__valor--gasto { color: #b3261e; }
 
 .cierre-diferencia {
   padding: 11px; border-radius: 10px; font-size: 14px; text-align: center;
   font-weight: 700; margin-bottom: 18px;
+}
+/* Sin esto el texto ("Caja cuadrada", "Faltan Q…") heredaba los 24px globales */
+.cierre-diferencia span { font-size: 14px; font-weight: 700; }
+.cierre-sin-conteo {
+  margin: 0 0 18px; padding: 10px 12px; border-radius: 10px; text-align: center;
+  background: #faf6f1; font-size: 13px; font-weight: 600; color: #8a7362; line-height: 1.4;
 }
 .cierre-diferencia--ok    { background: #eaf9ee; color: #1a6b32; border: 1px solid #b7e8c4; }
 .cierre-diferencia--falta { background: #fff0f0; color: #cc0000; border: 1px solid #ffcccc; }
@@ -3031,183 +3612,164 @@ onUnmounted(() => {
 .drawer__btn--historial { color: #2c1a0e; }
 .drawer__btn--cerrar-turno { color: #e8621a; }
 .drawer__btn--extras { color: #2c1a0e; }
+.drawer__btn--gastos {
+  color: #2c1a0e; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.drawer__btn-contador {
+  font-size: 11.5px; font-weight: 800; color: #8a7362;
+  background: #f4ede5; padding: 2px 9px; border-radius: 999px;
+}
 
 /* ── DIVIDIR CUENTA ── */
 .dividir-overlay {
-  position: fixed; inset: 0; background: rgba(26,14,6,0.75);
+  position: fixed; inset: 0; background: rgba(26,14,6,0.6);
   display: flex; align-items: center; justify-content: center;
   z-index: 1200; padding: 16px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
 }
-
 .dividir {
-  background: white; border-radius: 20px;
-  width: 100%; max-width: 900px; max-height: 92vh;
+  background: #ffffff; border-radius: 22px;
+  width: 100%; max-width: 920px; max-height: 92vh;
   display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
 
 .dividir__head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 22px; border-bottom: 1px solid #f0e6d8;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 20px 24px 16px; border-bottom: 1px solid #f2ebe3;
 }
-.dividir__head h2 { font-size: 24px; font-weight: 800; margin: 0; color: #2c1a0e; }
-.dividir__sub { font-size: 16px; color: #8c6a52; margin: 2px 0 0; font-weight: 600; }
+.dividir__titulo { margin: 0; font-size: 21px; font-weight: 800; color: #2c1a0e; }
+.dividir__sub { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: #8a7362; }
 .dividir__x {
-  width: 34px; height: 34px; border-radius: 50%; border: none;
-  background: #f0e6d8; color: #6b3a1f; cursor: pointer;
+  width: 36px; height: 36px; border-radius: 50%; border: none; flex-shrink: 0;
+  background: #f4ede5; color: #6b5444; cursor: pointer; font-size: 15px; font-weight: 700;
 }
+.dividir__x:hover { background: #ebe0d4; }
 
 .dividir__cuerpo {
-  flex: 1; display: grid; grid-template-columns: 1.2fr 1fr;
-  gap: 0; overflow: hidden;
+  flex: 1; min-height: 0; display: grid; grid-template-columns: 1.15fr 1fr; overflow: hidden;
 }
-
 .dividir__col {
-  padding: 18px 22px; overflow-y: auto;
+  padding: 18px 24px; overflow-y: auto; min-height: 0;
   display: flex; flex-direction: column; gap: 12px;
 }
-.dividir__col--cobro { background: #fdf8f2; border-left: 1px solid #f0e6d8; }
+.dividir__col--cobro { background: #faf6f1; border-left: 1px solid #f2ebe3; }
 
-.dividir__col-head {
-  display: flex; align-items: center; justify-content: space-between;
-}
+.dividir__col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dividir__label {
-  font-size: 13px; font-weight: 800; letter-spacing: 0.08em;
-  text-transform: uppercase; color: #8c6a52;
+  font-size: 11.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.07em;
 }
-.dividir__acciones-mini { display: flex; gap: 8px; }
-.dividir__acciones-mini button {
-  background: none; border: none; color: #e8621a;
-  font-size: 15px; font-weight: 700; cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+.dividir__acciones-mini { display: flex; gap: 4px; }
+.dividir__mini {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: #e8621a; padding: 6px 8px; border-radius: 8px;
 }
+.dividir__mini:hover { background: rgba(232,98,26,0.08); }
 
-.dividir__chips { display: flex; flex-wrap: wrap; gap: 8px; align-content: start; }
-
-.chip {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 16px 20px; border-radius: 12px;
-  border: 2px solid #e8ddd0; background: white;
-  cursor: pointer; text-align: left;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  transition: border-color 0.1s, background 0.1s;
+/* Lista de productos por cobrar */
+.dividir__items { display: flex; flex-direction: column; gap: 8px; }
+.item-div {
+  display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 12px;
+  min-height: 54px; padding: 10px 14px; border-radius: 13px;
+  border: 1.5px solid #efe6dc; background: #ffffff; cursor: pointer; text-align: left;
+  transition: border-color 0.12s, background 0.12s;
 }
-.chip:hover { border-color: #e8621a; }
-.chip--sel { border-color: #e8621a; background: #fff5f0; }
-.chip__nombre { font-size: 17px; font-weight: 700; color: #2c1a0e; }
-.chip__precio { font-size: 18px; font-weight: 800; color: #e8621a; }
-
+.item-div:hover { border-color: #e2d3c3; }
+.item-div--sel { border-color: #e8621a; background: #fff6f0; }
+.item-div__check {
+  width: 24px; height: 24px; border-radius: 7px; border: 1.5px solid #d8c9b9; background: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.item-div__check svg {
+  width: 15px; height: 15px; fill: none; stroke: #ffffff; stroke-width: 2.6;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 0.12s;
+}
+.item-div--sel .item-div__check { background: #e8621a; border-color: #e8621a; }
+.item-div--sel .item-div__check svg { opacity: 1; }
+.item-div__nombre { font-size: 15px; font-weight: 600; color: #2c1a0e; line-height: 1.3; }
+.item-div__precio { font-size: 15px; font-weight: 700; color: #2c1a0e; font-variant-numeric: tabular-nums; }
 .dividir__vacio {
-  color: #25d366; font-size: 18px; font-weight: 700;
-  padding: 24px 0; margin: 0; width: 100%; text-align: center;
+  margin: 0; padding: 22px 16px; text-align: center; border-radius: 13px;
+  font-size: 14.5px; font-weight: 700; color: #24733b; background: rgba(47,140,74,0.08);
 }
 
+/* Columna de cobro */
 .dividir__monto {
-  background: #1a0e06; border-radius: 12px; padding: 16px 20px;
-  display: flex; justify-content: space-between; align-items: center;
-  color: rgba(255,255,255,0.6); font-weight: 700; font-size: 16px;
+  background: #ffffff; border: 1px solid #efe6dc; border-radius: 16px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;
 }
-.dividir__monto strong { font-size: 32px; font-weight: 800; color: #f5a623; }
-
-.dividir__metodos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-
+.dividir__monto-label {
+  font-size: 11.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.dividir__monto-valor {
+  font-size: 32px; font-weight: 800; color: #2c1a0e; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.dividir__col--cobro .segmento { background: #efe5da; }
 .dividir__efectivo { display: flex; flex-direction: column; gap: 8px; }
-
-.dividir__input {
-  padding: 16px; border: 2px solid #e8ddd0; border-radius: 10px;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 26px; font-weight: 800;
-  color: #2c1a0e; outline: none; text-align: center;
-}
-.dividir__input:focus { border-color: #e8621a; }
-
-.dividir__sugs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-
-.dividir__cambio {
-  display: flex; justify-content: space-between; align-items: center;
-  background: #eaf9ee; border: 1px solid #b7e8c4; border-radius: 10px;
-  padding: 14px 18px; font-weight: 700; color: #1a6b32; font-size: 16px;
-}
-.dividir__cambio strong { font-size: 26px; font-weight: 800; }
-
 .dividir__cobrar {
-  padding: 18px; border-radius: 12px; border: none;
-  background: #e8621a; color: white;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; font-weight: 800;
-  cursor: pointer;
+  height: 52px; border-radius: 13px; border: none; background: #e8621a; color: #ffffff;
+  font-size: 15.5px; font-weight: 800; cursor: pointer; transition: background 0.12s;
+  font-variant-numeric: tabular-nums;
 }
-.dividir__cobrar:disabled { opacity: 0.3; cursor: not-allowed; }
 .dividir__cobrar:hover:not(:disabled) { background: #c04e10; }
+.dividir__cobrar:disabled { background: #e9e1d8; color: #b3a394; cursor: not-allowed; }
 
+/* Pagos ya registrados */
 .dividir__pagos { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-
 .pago-row {
-  display: grid; grid-template-columns: auto 1fr auto;
-  gap: 10px; align-items: center;
-  background: white; border: 1px solid #e8ddd0;
-  border-radius: 10px; padding: 10px 12px;
+  display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center;
+  background: #ffffff; border: 1px solid #efe6dc; border-radius: 12px; padding: 10px 12px;
 }
-.pago-row__metodo { font-size: 22px; }
+.pago-row__num {
+  width: 26px; height: 26px; border-radius: 50%; background: rgba(47,140,74,0.11);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; color: #24733b;
+}
 .pago-row__info { display: flex; flex-direction: column; min-width: 0; }
-.pago-row__info strong { font-size: 17px; color: #2c1a0e; font-weight: 700; }
-.pago-row__info span {
-  font-size: 13px; color: #8c6a52; font-weight: 600;
+.pago-row__monto { font-size: 15px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums; }
+.pago-row__metodo { font-size: 12px; font-weight: 600; color: #8a7362; margin-left: 4px; }
+.pago-row__items {
+  font-size: 12px; font-weight: 500; color: #a3948a;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pago-row__x {
-  width: 26px; height: 26px; border-radius: 50%; border: none;
-  background: #f0e6d8; color: #8c6a52; cursor: pointer; font-size: 12px;
+  width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: #f4ede5; color: #8a7362; cursor: pointer; font-size: 12px; font-weight: 700;
 }
-.pago-row__x:hover { background: #cc0000; color: white; }
+.pago-row__x:hover { background: rgba(204,0,0,0.1); color: #cc0000; }
 
+/* Pie: progreso + finalizar */
 .dividir__footer {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 16px 22px; border-top: 1px solid #f0e6d8;
-  background: white;
+  display: flex; align-items: center; gap: 20px;
+  padding: 16px 24px; border-top: 1px solid #f2ebe3; background: #ffffff;
 }
-.dividir__resumen { display: flex; gap: 20px; font-size: 16px; color: #6b3a1f; font-weight: 600; }
-.dividir__resumen strong { color: #2c1a0e; font-weight: 700; }
-.dividir__falta strong { color: #cc0000; }
-.dividir__ok { color: #25d366; font-weight: 800; }
-
+.dividir__progreso { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.dividir__progreso-textos { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.dividir__cobrado { font-size: 15px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums; }
+.dividir__de { font-size: 13px; font-weight: 600; color: #a3948a; margin-left: 2px; }
+.dividir__falta { font-size: 13.5px; font-weight: 700; color: #a4640f; font-variant-numeric: tabular-nums; }
+.dividir__ok { font-size: 13.5px; font-weight: 700; color: #24733b; }
+.dividir__barra { height: 8px; border-radius: 999px; background: #f2ebe3; overflow: hidden; }
+.dividir__barra-relleno {
+  height: 100%; border-radius: 999px; background: #2f8c4a;
+  transition: width 0.25s ease;
+}
 .dividir__confirmar {
-  padding: 18px 36px; border-radius: 12px; border: none;
-  background: #25d366; color: white;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; font-weight: 800;
-  cursor: pointer;
+  height: 54px; padding: 0 34px; border-radius: 14px; border: none;
+  background: #2f8c4a; color: #ffffff;
+  font-size: 16px; font-weight: 800; cursor: pointer; transition: background 0.12s;
 }
-.dividir__confirmar:disabled { opacity: 0.3; cursor: not-allowed; }
-.dividir__confirmar:hover:not(:disabled) { background: #1fb855; }
-
-/* Botón dividir dentro del modal de cobro */
-.cobro__dividir {
-  padding: 16px; border-radius: 12px;
-  border: 2px solid #e8ddd0; background: white;
-  font-family: 'Plus Jakarta Sans', sans-serif; font-size: 15px; font-weight: 700;
-  color: #6b3a1f; cursor: pointer;
-}
-.cobro__dividir:hover { border-color: #e8621a; color: #e8621a; }
+.dividir__confirmar:hover:not(:disabled) { background: #24733b; }
+.dividir__confirmar:disabled { background: #e9e1d8; color: #b3a394; cursor: not-allowed; }
 
 @media (max-width: 900px) {
-  .dividir__cuerpo { grid-template-columns: 1fr; }
-  .dividir__col--cobro { border-left: none; border-top: 1px solid #f0e6d8; }
-  .dividir__footer { flex-direction: column; align-items: stretch; }
+  .dividir__cuerpo { grid-template-columns: 1fr; overflow-y: auto; }
+  .dividir__col { overflow: visible; }
+  .dividir__col--cobro { border-left: none; border-top: 1px solid #f2ebe3; }
+  .dividir__footer { flex-direction: column; align-items: stretch; gap: 12px; }
 }
 
-/* ── PEDIDO DETALLE PAGO ── */
-.pedido__pagos {
-  margin-top: 8px; padding: 8px 10px;
-  background: rgba(255,255,255,0.04); border-radius: 8px;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.pedido__pagos-titulo {
-  font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
-  text-transform: uppercase; color: rgba(255,255,255,0.4);
-}
-.pedido__pago {
-  display: flex; flex-direction: column; gap: 1px;
-  font-size: 13px; color: rgba(255,255,255,0.75); font-weight: 600;
-}
-.pedido__pago-items {
-  font-size: 11px; color: rgba(255,255,255,0.4);
-}
 </style>

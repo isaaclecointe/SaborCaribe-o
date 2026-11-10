@@ -38,8 +38,9 @@
         </span>
 
         <div class="ticket__productos">
+          <!-- Solo lo que prepara cocina: bebidas y postres los entrega caja -->
           <div
-            v-for="(prod, i) in pedido.productos"
+            v-for="(prod, i) in productosDeCocina(pedido)"
             :key="i"
             class="ticket__producto"
             :class="{ 'ticket__producto--nuevo': prod.cantidadNueva > 0 }"
@@ -66,6 +67,7 @@
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import { db } from '../../firebase.js'
 import { collection, onSnapshot, orderBy, query, doc, updateDoc } from 'firebase/firestore'
+import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
 
 const pedidos = ref([])
 let unsubscribe = null
@@ -88,10 +90,19 @@ onUnmounted(() => {
 })
 
 // Pedidos que la cocina todavía tiene que preparar, del más viejo al más nuevo
-// (mismos estados que ya usa el botón "Listo" en Activos)
+// (mismos estados que ya usa el botón "Listo" en Activos). Los pedidos de
+// solo bebidas/postres no aparecen: esos los despacha caja directo.
 const pedidosCocina = computed(() =>
-  pedidos.value.filter(p => p.estado === 'nuevo' || p.estado === 'guardado')
+  pedidos.value.filter(p =>
+    (p.estado === 'nuevo' || p.estado === 'guardado') && pedidoNecesitaCocina(p)
+  )
 )
+
+// Productos del ticket que cocina tiene que preparar (sin bebidas/postres).
+// Solo se ocultan en pantalla: el pedido en Firebase queda completo.
+function productosDeCocina(pedido) {
+  return (pedido.productos || []).filter(vaACocina)
+}
 
 function minutosDesde(pedido) {
   if (!pedido.fecha?.toDate) return 0
