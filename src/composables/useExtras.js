@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { db } from '../firebase.js'
+import { idCatalogo } from '../utils/catalogoInicial.js'
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
   doc, orderBy, query, serverTimestamp
@@ -9,7 +10,8 @@ import {
 // Colección en Firestore: "extras"
 // Cada documento: { nombre, precio, productos: [...ids], activo, creado }
 //
-// "productos" es una lista de ids de producto (los mismos ids de productos.json),
+// "productos" es una lista de ids de producto del catálogo del POS (los
+// extras viejos tienen ids de productos.json; ver extraAplicaA),
 // NO categorías: así "taco extra res" solo aparece al editar una porción de
 // tacos de res, no en tacos al pastor aunque estén en la misma categoría "Tacos".
 //
@@ -43,10 +45,16 @@ function detenerExtras() {
 
 // Extras activos que aplican a un producto específico (por id).
 // Uso: extrasParaProducto(producto.id)
+// Los extras viejos guardan ids numéricos de productos.json (ej. 3) y los
+// nuevos guardan ids de texto del catálogo del POS (ej. "2"). idCatalogo
+// traduce los dos al mismo formato, sin tener que reescribir nada en Firebase.
+function extraAplicaA(extra, productoId) {
+  const id = idCatalogo(productoId)
+  return (extra.productos || []).some(p => idCatalogo(p) === id)
+}
+
 function extrasParaProducto(productoId) {
-  return extras.value.filter(
-    e => e.activo !== false && e.productos?.includes(productoId)
-  )
+  return extras.value.filter(e => e.activo !== false && extraAplicaA(e, productoId))
 }
 
 async function crearExtra({ nombre, precio, productos }) {
@@ -75,6 +83,7 @@ export function useExtras() {
     escucharExtras,
     detenerExtras,
     extrasParaProducto,
+    extraAplicaA,
     crearExtra,
     actualizarExtra,
     eliminarExtra

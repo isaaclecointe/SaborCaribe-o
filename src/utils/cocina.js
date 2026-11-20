@@ -17,9 +17,14 @@ export function categoriaDe(prod) {
   return prod.categoria || categoriaPorNombre.get(prod.nombre) || null
 }
 
-// ¿Este producto lo prepara cocina? Si no sabemos su categoría, decimos
-// que sí: es mejor que cocina vea algo de más a que se le escape un plato.
+// ¿Este producto lo prepara cocina?
+// 1) Los productos del catálogo del POS lo dicen ellos mismos (vaACocina),
+//    porque se configura en "Productos del POS".
+// 2) Si no lo dicen (pedidos de la web o anteriores al catálogo), se usa
+//    la categoría. Si tampoco sabemos la categoría, decimos que sí: es
+//    mejor que cocina vea algo de más a que se le escape un plato.
 export function vaACocina(prod) {
+  if (typeof prod.vaACocina === 'boolean') return prod.vaACocina
   return !CATEGORIAS_SIN_COCINA.includes(categoriaDe(prod))
 }
 

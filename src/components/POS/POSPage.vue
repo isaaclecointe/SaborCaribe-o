@@ -111,6 +111,9 @@
   >
     Cerrar turno
   </button>
+  <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalProductos = true">
+    Productos del POS
+  </button>
   <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalGestionExtras = true">
     Gestionar extras
   </button>
@@ -461,6 +464,7 @@
 
     <!-- ── PANEL GESTIONAR EXTRAS ── -->
     <GestionExtras v-if="modalGestionExtras" @cerrar="modalGestionExtras = false" />
+    <GestionProductos v-if="modalProductos" @cerrar="modalProductos = false" />
 
     <!-- ── MODAL SELECCIÓN DE OPCIÓN (carne) ── -->
     <Transition name="modal">
@@ -476,7 +480,7 @@
               @click="confirmarOpcion(op)"
             >
               {{ op.nombre }}
-               <span v-if="productoConOpciones.esFusion" class="opcion-btn__precio">Q{{ op.precio }}</span>
+               <span v-if="opcionesConPreciosDistintos(productoConOpciones)" class="opcion-btn__precio">Q{{ op.precio }}</span>
             </button>
           </div>
           <button class="opciones-modal__cancelar" @click="productoConOpciones = null">Cancelar</button>
@@ -1043,7 +1047,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
-import productosData from '../../assets/data/productos.json'
 import { db, auth } from '../../firebase.js'
 import { reiniciarContadorPedidos, registrarNumeroUsado } from '../../utils/pedidosNumero.js'
 import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
@@ -1052,99 +1055,25 @@ import {
   query, serverTimestamp, writeBatch, getDocs, getDoc, where, limit
 } from 'firebase/firestore'
 import { useExtras } from '../../composables/useExtras.js'
+import { useCatalogoPos } from '../../composables/useCatalogoPos.js'
+import { idCatalogo } from '../../utils/catalogoInicial.js'
 import GestionExtras from '../admin/GestionExtras.vue'
+import GestionProductos from '../admin/GestionProductos.vue'
 
 //import { imprimirTicketCocina, probarImpresora } from '../../impresora.js'
 
-const nombresCortosPos = {
-  5:'Quesadillas',
-  6: 'Quesadilla Peperonne y Jamon'
-}
-
-// Posición en la cuadrícula del POS para productos que se agregaron
-// después y que deben quedar junto a sus parecidos (por defecto se
-// ordenan por id). Ej: el Burrito de Pasta (21) junto al de Pollo (14).
-const posicionesPos = {
-  21: 14.5
-}
-
-// Qué prepara cocina y qué despacha caja (bebidas, postres) vive en
-// utils/cocina.js, compartido con CocinaView.vue. Si lo único que se
-// agrega a un pedido ya "listo" es bebida/postre, el pedido se queda en
-// "listo" y no vuelve a aparecer en la pantalla de Cocina.
-
-// ── Productos fusionados solo para el POS ──
-// `posicion` = dónde aparece el botón en la cuadrícula (los productos
-// normales se ordenan por su id; 2.5 = entre el id 2 y el 3, etc.)
-const fusionesPOS = [
-  {
-    id: 'tortilla-grande',
-    nombre: 'Tortilla Grande',
-    categoria: 'Tortillas de Harina',
-    posicion: 2.5,            // después de Tortilla Pequeña
-    reemplaza: [2, 3],        // ids que oculta del grid
-    // productoId = el producto real de productos.json de cada opción.
-    // Así los extras asignados en "Gestionar extras" a ese producto sí
-    // aparecen al tocar la nota del pedido.
-    opciones: [
-      { nombre: 'Pollo',   precio: 31, productoId: 2 },
-      { nombre: 'Adobado', precio: 31, productoId: 2 },
-      { nombre: 'Res',     precio: 33, productoId: 3 }
-    ]
-  },
-  {
-    id: 'gringas',
-    nombre: 'Gringas',
-    categoria: 'Tacos',
-    posicion: 10.5,           // después de Tacos de Res
-    reemplaza: [19, 20],      // ids que oculta del grid
-    opciones: [
-      { nombre: '2x', precio: 25, productoId: 19 },
-      { nombre: '3x', precio: 35, productoId: 20 }
-    ]
-  },
-  {
-    id: 'yogurt',
-    nombre: 'Yogurt',
-    categoria: 'Postres',
-    posicion: 15.5,           // junto a Gelatina, con los postres
-    reemplaza: [16, 17, 18],  // ids que oculta del grid
-    opciones: [
-      { nombre: 'Pequeño', precio: 6,  productoId: 16 },
-      { nombre: 'Mediano', precio: 25, productoId: 17 },
-      { nombre: 'Grande',  precio: 40, productoId: 18 }
-    ]
-  }
-]
-
-// Lista de productos que ve el POS
-const productosPOS = computed(() => {
-  const ocultos = fusionesPOS.flatMap(f => f.reemplaza)
-
-  // Productos normales (sin los que se fusionaron)
-  const normales = productosData
-    .filter(p => !ocultos.includes(p.id))
-    .map(p => ({
-      ...p,
-      nombreCorto: nombresCortosPos[p.id] || p.nombre,
-      // Convierte opciones simples a objetos con precio
-      opciones: p.opciones
-        ? p.opciones.map(o => ({ nombre: o, precio: p.precio }))
-        : null
-    }))
-
-  // Agrega las fusiones y ordena todo por posición
-  const resultado = [...normales]
-  fusionesPOS.forEach(f => {
-    const precioBase = Math.min(...f.opciones.map(o => o.precio))
-    resultado.push({ ...f, precio: precioBase, esFusion: true })
-  })
-
-  const posicionDe = p =>
-    p.esFusion ? p.posicion : (posicionesPos[p.id] ?? p.id)
-
-  return resultado.sort((a, b) => posicionDe(a) - posicionDe(b))
-})
+// ── Catálogo de productos del POS ──
+// Los productos ya no están escritos aquí: viven en Firebase y se
+// administran desde el menú lateral ("Productos del POS"). Toda la lógica
+// está en composables/useCatalogoPos.js. La página web no usa este
+// catálogo: sigue con su propio productos.json.
+// Qué prepara cocina y qué entrega caja lo decide cada producto
+// (vaACocina); la regla compartida con Cocina vive en utils/cocina.js.
+const {
+  escucharCatalogo, detenerCatalogo, productosPOS, categoriasPOS,
+  todosLosProductos, buscarProducto
+} = useCatalogoPos()
+const modalProductos = ref(false)
 
 const router = useRouter()
 
@@ -1258,16 +1187,22 @@ const efectivoParcial = ref(null)
 
 
 // ── Categorías ──
-const categorias = computed(() => {
-  const cats = [...new Set(productosData.map(p => p.categoria))]
-  return ['Todo', ...cats]
+// Las categorías salen del catálogo (solo las que tienen productos visibles)
+const categorias = computed(() => ['Todo', ...categoriasPOS.value])
+
+const productosFiltrados = computed(() => {
+  // Si la categoría elegida ya no existe (se renombró o se ocultó todo), se muestran todos
+  const cat = categoriasPOS.value.includes(categoriaActiva.value) ? categoriaActiva.value : 'Todo'
+  return cat === 'Todo'
+    ? productosPOS.value
+    : productosPOS.value.filter(p => p.categoria === cat)
 })
 
-const productosFiltrados = computed(() =>
-  categoriaActiva.value === 'Todo'
-    ? productosPOS.value
-    : productosPOS.value.filter(p => p.categoria === categoriaActiva.value)
-)
+// En el modal de opciones, el precio de cada opción solo se muestra si no
+// todas cuestan lo mismo (ej. Tortilla Grande sí; Tortilla Pequeña no)
+function opcionesConPreciosDistintos(producto) {
+  return new Set((producto?.opciones || []).map(o => o.precio)).size > 1
+}
 
 // ── Tabs ──
 const enProceso = ['nuevo', 'guardado', 'listo']
@@ -1375,10 +1310,8 @@ function agregarProducto(producto, opcion = null) {
   const precio = opcion?.precio ?? producto.precio
   const base = producto.nombreCorto || producto.nombre
   const nombreCompleto = nombreOp ? `${base} ${nombreOp}` : base
-  // En los botones agrupados (Tortilla Grande, Yogurt, Gringas) el id es
-  // el del producto real de la opción elegida, no el del botón agrupado:
-  // de eso dependen los extras.
-  const idProducto = opcion?.productoId ?? producto.id
+  // Id del producto en el catálogo: de él dependen los extras
+  const idProducto = producto.id
 
   const key = nombreOp ? `${idProducto}-${nombreOp}` : `${idProducto}`
   const existe = orden.value.find(i => i.key === key)
@@ -1388,6 +1321,7 @@ function agregarProducto(producto, opcion = null) {
     id: idProducto,
     nombre: nombreCompleto,
     categoria: producto.categoria,
+    vaACocina: producto.vaACocina,
     precio,
     precioBase: precio,
     opcion: nombreOp,
@@ -1579,11 +1513,14 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
   if (!orden.value.length) return
 
   const productos = orden.value.map(i => ({
-    // Producto real de productos.json: al editar el pedido después, con
-    // esto se recuperan sus extras (el nombre lleva la opción pegada).
-    productoId: typeof i.id === 'number' ? i.id : null,
+    // Producto del catálogo: al editar el pedido después, con esto se
+    // recuperan sus extras (el nombre lleva la opción pegada). Los ids
+    // "x0", "x1"... son de productos que no se pudieron identificar.
+    productoId: i.id != null && !String(i.id).startsWith('x') ? String(i.id) : null,
     nombre: i.nombre,
     categoria: i.categoria || null,
+    // Lo decide el producto: Cocina y "agregar a un pedido listo" lo usan
+    ...(typeof i.vaACocina === 'boolean' ? { vaACocina: i.vaACocina } : {}),
     opcion: i.opcion || null,
     cantidad: i.cantidad,
     precio: i.precio,
@@ -1740,35 +1677,34 @@ function esEditable(pedido) {
   return pedido.estado !== 'cancelado' && pedido.estado !== 'entregado'
 }
 
-// Producto real (id de productos.json) de un producto ya guardado en un
-// pedido. Los pedidos nuevos lo traen en productoId. En los guardados antes
-// hay que deducirlo del nombre, que lleva la opción pegada ("Tortilla
-// Grande Pollo", "Tortilla Pequeña Res") o es el nombre corto del POS.
+// Id de catálogo de un producto ya guardado en un pedido. Los pedidos
+// nuevos lo traen en productoId (los ids viejos de productos.json se
+// traducen con idCatalogo). En pedidos guardados antes se deduce del
+// nombre, que lleva la opción pegada ("Tortilla Pequeña Res") o es el
+// nombre corto del pedido ("Quesadillas Res").
 function idDeProductoGuardado(p, i) {
-  if (p.productoId != null) return p.productoId
-  const directo = productosData.find(x => x.nombre === p.nombre)
-  if (directo) return directo.id
-  for (const f of fusionesPOS) {
-    const op = f.opciones.find(o => `${f.nombre} ${o.nombre}` === p.nombre)
-    if (op) return op.productoId
-  }
-  const normal = productosPOS.value.find(x => {
-    if (x.esFusion) return false
+  if (p.productoId != null) return idCatalogo(p.productoId)
+  const encontrado = todosLosProductos.value.find(x => {
     const base = x.nombreCorto || x.nombre
-    return base === p.nombre || (p.opcion && `${base} ${p.opcion}` === p.nombre)
+    return x.nombre === p.nombre || base === p.nombre ||
+      (p.opcion && `${base} ${p.opcion}` === p.nombre) ||
+      (p.opcion && `${x.nombre} ${p.opcion}` === p.nombre)
   })
-  return normal ? normal.id : `x${i}`
+  return encontrado ? encontrado.id : `x${i}`
 }
 
-function editarPedido(pedido) {
-  pedidoEditandoId.value = pedido.id
-  orden.value = pedido.productos.map((p, i) => {
+// Convierte los productos de un pedido guardado en líneas editables de la
+// orden (para editarlo o cobrarlo). Una sola función para los dos casos.
+function lineasDesdePedido(pedido) {
+  return pedido.productos.map((p, i) => {
     const baseId = idDeProductoGuardado(p, i)
-    const original = productosData.find(x => x.id === baseId)
+    const original = buscarProducto(baseId)
+    const vaACocinaGuardado = typeof p.vaACocina === 'boolean' ? p.vaACocina : original?.vaACocina
     return {
       id: baseId,
       nombre: p.nombre,
       categoria: p.categoria || original?.categoria || null,
+      ...(typeof vaACocinaGuardado === 'boolean' ? { vaACocina: vaACocinaGuardado } : {}),
       precio: p.precio,
       precioBase: p.precioBase ?? p.precio,
       opcion: p.opcion,
@@ -1778,6 +1714,11 @@ function editarPedido(pedido) {
       key: p.opcion ? `${baseId}-${p.opcion}` : `${baseId}`
     }
   })
+}
+
+function editarPedido(pedido) {
+  pedidoEditandoId.value = pedido.id
+  orden.value = lineasDesdePedido(pedido)
   tabActivo.value = 'pos'
 }
 
@@ -1887,22 +1828,7 @@ function abrirCobro(nombre) {
 function cobrarPedidoExistente(pedido) {
   pedidoEditandoId.value = pedido.id
   cobroPedidoId.value = pedido.id
-  orden.value = pedido.productos.map((p, i) => {
-    const baseId = idDeProductoGuardado(p, i)
-    const original = productosData.find(x => x.id === baseId)
-    return {
-      id: baseId,
-      nombre: p.nombre,
-      categoria: p.categoria || original?.categoria || null,
-      precio: p.precio,
-      precioBase: p.precioBase ?? p.precio,
-      opcion: p.opcion,
-      cantidad: p.cantidad,
-      comentario: p.comentario || '',
-      extras: p.extras || [],
-      key: p.opcion ? `${baseId}-${p.opcion}` : `${baseId}`
-    }
-  })
+  orden.value = lineasDesdePedido(pedido)
   nombreParaCobro.value = pedido.cliente
   metodoPago.value = 'efectivo'
   efectivoRecibido.value = null
@@ -2529,6 +2455,7 @@ onMounted(() => {
     aplicarColorBarra()
 
     escucharExtras()
+    escucharCatalogo()
 
     limpiarDocumentosVacios()
 
@@ -2582,6 +2509,7 @@ onUnmounted(() => {
   if (unsubscribe) unsubscribe()
   if (unsubTurno) unsubTurno()
   detenerExtras()
+  detenerCatalogo()
   clearInterval(intervaloPestana)
 })
 </script>

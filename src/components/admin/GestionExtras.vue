@@ -33,6 +33,7 @@
                 type="button"
                 class="extras-chip"
                 :class="{ 'extras-chip--activa': nuevosProductos.includes(p.id) }"
+                :title="p.activo ? '' : 'Oculto en caja'"
                 @click="toggleNuevoProducto(p.id)"
               >
                 {{ p.nombre }}
@@ -67,7 +68,7 @@
                 @change="renombrar(e, $event.target.value)"
               />
               <div class="extras-item-cats">
-                <span v-for="pid in e.productos" :key="pid" class="extras-chip extras-chip--mini">
+                <span v-for="pid in idsUnicos(e.productos)" :key="pid" class="extras-chip extras-chip--mini">
                   {{ nombreProducto(pid) }}
                 </span>
                 <span v-if="!e.productos?.length" class="extras-item-sinproductos">
@@ -107,7 +108,7 @@
                   :key="p.id"
                   type="button"
                   class="extras-chip"
-                  :class="{ 'extras-chip--activa': e.productos?.includes(p.id) }"
+                  :class="{ 'extras-chip--activa': extraAplicaA(e, p.id) }"
                   @click="toggleProductoExtra(e, p.id)"
                 >
                   {{ p.nombre }}
@@ -123,27 +124,36 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import productosData from '../../assets/data/productos.json'
 import { useExtras } from '../../composables/useExtras.js'
+import { useCatalogoPos } from '../../composables/useCatalogoPos.js'
+import { idCatalogo } from '../../utils/catalogoInicial.js'
 
 defineEmits(['cerrar'])
 
-const { extras, cargandoExtras, crearExtra, actualizarExtra, eliminarExtra } = useExtras()
+const { extras, cargandoExtras, crearExtra, actualizarExtra, eliminarExtra, extraAplicaA } = useExtras()
+const { todosLosProductos, buscarProducto } = useCatalogoPos()
 
-// Productos agrupados por categoría, para elegir a cuáles aplica cada extra
-// (por producto específico, no por categoría completa: así "taco extra res"
-// no aparece al editar una porción de tacos al pastor).
+// Productos del catálogo del POS agrupados por categoría (en el mismo orden
+// que la caja), para elegir a cuáles aplica cada extra. Por producto
+// específico, no por categoría completa: así "taco extra res" no aparece
+// al editar una porción de tacos al pastor.
 const productosAgrupados = computed(() => {
-  const grupos = {}
-  productosData.forEach(p => {
-    if (!grupos[p.categoria]) grupos[p.categoria] = []
-    grupos[p.categoria].push({ id: p.id, nombre: p.nombre })
+  const grupos = new Map()
+  todosLosProductos.value.forEach(p => {
+    if (!grupos.has(p.categoria)) grupos.set(p.categoria, [])
+    grupos.get(p.categoria).push({ id: p.id, nombre: p.nombre, activo: p.activo })
   })
-  return Object.entries(grupos).map(([categoria, productos]) => ({ categoria, productos }))
+  return [...grupos].map(([categoria, productos]) => ({ categoria, productos }))
 })
 
+// Ids de un extra traducidos al catálogo y sin repetir (dos ids viejos
+// pueden apuntar al mismo producto, ej. Yogurt Mediano y Grande → Yogurt)
+function idsUnicos(lista) {
+  return [...new Set((lista || []).map(idCatalogo))]
+}
+
 function nombreProducto(id) {
-  return productosData.find(p => p.id === id)?.nombre || `#${id}`
+  return buscarProducto(idCatalogo(id))?.nombre || 'Producto eliminado'
 }
 
 const nuevoNombre = ref('')
@@ -167,8 +177,9 @@ function toggleExpandido(id) {
   expandido.value = expandido.value === id ? null : id
 }
 
+// Al tocar un producto, la lista se guarda ya con ids del catálogo
 function toggleProductoExtra(extra, id) {
-  const actuales = extra.productos || []
+  const actuales = idsUnicos(extra.productos)
   const nuevos = actuales.includes(id)
     ? actuales.filter(x => x !== id)
     : [...actuales, id]

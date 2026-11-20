@@ -6,3 +6,8 @@
   font-weight: 600;
   font-size: 24px;
 }
+
+/* iPad/iPhone: que los toques seguidos no hagan zoom */
+html, body, * {
+  touch-action: manipulation;
+}
