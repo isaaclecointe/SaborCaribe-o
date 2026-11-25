@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { db } from '../firebase.js'
+import { colNegocio, docNegocio } from './useNegocio.js'
 import { idCatalogo } from '../utils/catalogoInicial.js'
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore'
 
 // ── Catálogo de extras (modificadores que cambian el precio) ──
-// Colección en Firestore: "extras"
+// Colección en Firestore: negocios/{negocio}/extras (ver useNegocio.js)
 // Cada documento: { nombre, precio, productos: [...ids], activo, creado }
 //
 // "productos" es una lista de ids de producto del catálogo del POS (los
@@ -28,7 +28,7 @@ let unsubExtras = null
 function escucharExtras() {
   if (unsubExtras) return // ya hay un listener activo, no duplicar
 
-  const q = query(collection(db, 'extras'), orderBy('nombre'))
+  const q = query(colNegocio('extras'), orderBy('nombre'))
   unsubExtras = onSnapshot(q, (snap) => {
     extras.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     cargandoExtras.value = false
@@ -58,7 +58,7 @@ function extrasParaProducto(productoId) {
 }
 
 async function crearExtra({ nombre, precio, productos }) {
-  await addDoc(collection(db, 'extras'), {
+  await addDoc(colNegocio('extras'), {
     nombre: nombre.trim(),
     precio: Number(precio),
     productos,
@@ -69,11 +69,11 @@ async function crearExtra({ nombre, precio, productos }) {
 
 // cambios puede ser { precio: 8 }, { activo: false }, { productos: [...] }, etc.
 async function actualizarExtra(id, cambios) {
-  await updateDoc(doc(db, 'extras', id), cambios)
+  await updateDoc(docNegocio('extras', id), cambios)
 }
 
 async function eliminarExtra(id) {
-  await deleteDoc(doc(db, 'extras', id))
+  await deleteDoc(docNegocio('extras', id))
 }
 
 export function useExtras() {

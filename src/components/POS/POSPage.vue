@@ -24,7 +24,7 @@
 
       <div class="navbar__user">
         <span class="navbar__dot"></span>
-        <span class="navbar__user-texto">En vivo</span>
+        <span class="navbar__user-texto">{{ sucursalActual?.nombre || 'En vivo' }}</span>
       </div>
     </header>
 
@@ -33,8 +33,29 @@
       <div v-if="menuAbierto" class="drawer-overlay" @click.self="menuAbierto = false">
         <aside class="drawer">
           <div class="drawer__header">
-            <h2>Sabor Caribeño</h2>
+            <h2>{{ negocio?.nombre || 'Mi negocio' }}</h2>
             <button class="drawer__cerrar" @click="menuAbierto = false">✕</button>
+          </div>
+
+          <!-- Sucursal de esta tablet -->
+          <div class="drawer__sucursal">
+            <div class="drawer__sucursal-textos">
+              <span class="drawer__sucursal-label">Sucursal</span>
+              <span class="drawer__sucursal-nombre">{{ sucursalActual?.nombre || '—' }}</span>
+            </div>
+            <button
+              v-if="sucursales.length > 1"
+              class="drawer__sucursal-cambiar"
+              @click="elegirSucursalAbierto = !elegirSucursalAbierto"
+            >{{ elegirSucursalAbierto ? 'Cerrar' : 'Cambiar' }}</button>
+          </div>
+          <div v-if="elegirSucursalAbierto" class="drawer__sucursales">
+            <button
+              v-for="s in sucursales" :key="s.id"
+              class="drawer__sucursal-opcion"
+              :class="{ 'drawer__sucursal-opcion--activa': s.id === sucursalId }"
+              @click="cambiarSucursal(s.id)"
+            >{{ s.nombre }}</button>
           </div>
 
          <div class="drawer__seccion">
@@ -93,8 +114,8 @@
 
 <!-- <button class="drawer__btn" @click="probarImpresora">🖨️ Probar impresora</button> -->
 <div class="drawer__acciones">
-  <button class="drawer__btn drawer__btn--historial" @click="irAlHistorial">
-    Historial de turnos
+  <button v-if="puedeGestionar" class="drawer__btn drawer__btn--historial" @click="irAlHistorial">
+    Historial y gráficas
   </button>
   <button
     v-if="turnoActual"
@@ -111,13 +132,25 @@
   >
     Cerrar turno
   </button>
-  <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalProductos = true">
-    Productos del POS
+  <button
+    v-else-if="sinTurno"
+    class="drawer__btn drawer__btn--abrir-turno"
+    @click="irAAbrirTurno"
+  >
+    Abrir turno
   </button>
-  <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalGestionExtras = true">
-    Gestionar extras
+  <template v-if="puedeGestionar">
+    <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalProductos = true">
+      Productos del POS
+    </button>
+    <button class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalGestionExtras = true">
+      Gestionar extras
+    </button>
+  </template>
+  <button v-if="esDueno" class="drawer__btn drawer__btn--extras" @click="menuAbierto = false; modalNegocio = true">
+    Sucursales y usuarios
   </button>
-  <button class="drawer__btn drawer__btn--limpiar" @click="borrarHistorialCompleto">
+  <button v-if="esDueno" class="drawer__btn drawer__btn--limpiar" @click="borrarHistorialCompleto">
     Limpiar historial
   </button>
   <button class="drawer__btn drawer__btn--salir" @click="cerrarSesion">
@@ -131,8 +164,44 @@
     <!-- ── ÁREA PRINCIPAL ── -->
     <main class="contenido">
 
+      <!-- ═══ SIN TURNO: se abre aquí, sin bloquear el resto del POS ═══ -->
+      <div v-if="tabActivo === 'pos' && sinTurno" class="sin-turno">
+        <div class="sin-turno__card">
+          <h2 class="sin-turno__titulo">Abrir turno</h2>
+          <p class="sin-turno__sub">
+            Para vender, primero abre el turno con el efectivo que hay en caja.
+            Mientras tanto puedes revisar pedidos y el menú.
+          </p>
+
+          <label class="sin-turno__label" for="fondo-inicial">Efectivo inicial en caja</label>
+          <div class="sin-turno__campo">
+            <span class="sin-turno__q">Q</span>
+            <input
+              id="fondo-inicial"
+              v-model.number="fondoInicial"
+              type="number"
+              inputmode="decimal"
+              class="sin-turno__input"
+              placeholder="0"
+              @keyup.enter="abrirTurno"
+            />
+          </div>
+
+          <div class="sin-turno__rapidos">
+            <button
+              v-for="m in [0, 100, 200, 500]" :key="m"
+              class="sin-turno__rapido"
+              :class="{ 'sin-turno__rapido--activo': fondoInicial === m }"
+              @click="fondoInicial = m"
+            >{{ m === 0 ? 'Sin fondo' : `Q${m}` }}</button>
+          </div>
+
+          <button class="sin-turno__ok" @click="abrirTurno">Abrir turno</button>
+        </div>
+      </div>
+
       <!-- ═══ VISTA POS ═══ -->
-      <div v-if="tabActivo === 'pos'" class="pos-view">
+      <div v-else-if="tabActivo === 'pos'" class="pos-view">
 
         <section class="pos-grid-zona">
           <div class="pos-productos">
@@ -465,6 +534,7 @@
     <!-- ── PANEL GESTIONAR EXTRAS ── -->
     <GestionExtras v-if="modalGestionExtras" @cerrar="modalGestionExtras = false" />
     <GestionProductos v-if="modalProductos" @cerrar="modalProductos = false" />
+    <GestionNegocio v-if="modalNegocio" @cerrar="modalNegocio = false" />
 
     <!-- ── MODAL SELECCIÓN DE OPCIÓN (carne) ── -->
     <Transition name="modal">
@@ -814,36 +884,6 @@
       </div>
     </Transition>
 
-    <!-- ── MODAL ABRIR TURNO (bloqueante) ── -->
-<div v-if="!cargandoTurno && !turnoActual" class="turno-overlay">
-  <div class="turno-modal">
-    <h2>Abrir turno</h2>
-    <p class="turno-modal__sub">
-      Debes abrir un turno para poder registrar ventas
-    </p>
-
-    <label class="turno-modal__label">Efectivo inicial en caja</label>
-    <input
-      v-model.number="fondoInicial"
-      type="number"
-      class="turno-modal__input"
-      placeholder="0"
-      @keyup.enter="abrirTurno"
-    />
-
-    <div class="turno-modal__rapidos">
-      <button class="tr-btn" @click="fondoInicial = 0">Sin fondo (Q0)</button>
-      <button class="tr-btn" @click="fondoInicial = 100">Q100</button>
-      <button class="tr-btn" @click="fondoInicial = 200">Q200</button>
-      <button class="tr-btn" @click="fondoInicial = 500">Q500</button>
-    </div>
-
-    <button class="turno-modal__ok" @click="abrirTurno">
-      Abrir turno
-    </button>
-  </div>
-</div>
-
 <!-- ── MODAL GASTOS DEL TURNO ── -->
 <div v-if="modalGastos" class="cobro-overlay cobro-overlay--top" @click.self="modalGastos = false">
   <div class="gastos">
@@ -1048,7 +1088,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../../firebase.js'
-import { reiniciarContadorPedidos, registrarNumeroUsado } from '../../utils/pedidosNumero.js'
+import { reiniciarContadorPedidos, registrarNumeroUsado, refContador } from '../../utils/pedidosNumero.js'
+import { useNegocio, limpiarSesion } from '../../composables/useNegocio.js'
 import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
 import {
   collection, onSnapshot, doc, updateDoc, setDoc, arrayUnion, orderBy,
@@ -1057,8 +1098,10 @@ import {
 import { useExtras } from '../../composables/useExtras.js'
 import { useCatalogoPos } from '../../composables/useCatalogoPos.js'
 import { idCatalogo } from '../../utils/catalogoInicial.js'
+import { resumenDeTurno } from '../../utils/resumenTurno.js'
 import GestionExtras from '../admin/GestionExtras.vue'
 import GestionProductos from '../admin/GestionProductos.vue'
+import GestionNegocio from '../admin/GestionNegocio.vue'
 
 //import { imprimirTicketCocina, probarImpresora } from '../../impresora.js'
 
@@ -1089,8 +1132,28 @@ let intervaloPestana = null
 
 // ── Turno ──
 const turnoActual = ref(null)
+// ── Negocio y sucursal ──
+// Dónde se lee y escribe (colSucursal/docSucursal) y qué puede hacer
+// esta persona (según su rol). Ver composables/useNegocio.js
+const {
+  negocio, negocioId, sucursalId, sucursalActual, sucursales,
+  esDueno, puedeGestionar, elegirSucursal, colSucursal, docSucursal
+} = useNegocio()
+const modalNegocio = ref(false)
+const elegirSucursalAbierto = ref(false)
+
+// Cambiar de sucursal (solo quien tiene más de una): se recarga la página
+// para que todo (pedidos, turno, número de orden) empiece limpio en la otra.
+function cambiarSucursal(id) {
+  elegirSucursalAbierto.value = false
+  if (id === sucursalId.value) return
+  elegirSucursal(id)
+  window.location.reload()
+}
+
 const cargandoTurno = ref(true)
-const modalAbrirTurno = ref(false)
+// Sin turno el POS se puede recorrer completo; solo vender y cobrar lo piden
+const sinTurno = computed(() => !cargandoTurno.value && !turnoActual.value)
 const modalCerrarTurno = ref(false)
 const modalPendientes = ref(false)
 const fondoInicial = ref(null)
@@ -1536,7 +1599,7 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       || (pedidoEditando.value.pagado ? pedidoEditando.value.total : 0)
     const nuevoPagado = datosPago ? yaPagado + (datosPago.monto || 0) : yaPagado
 
-    const refPedidoEditado = doc(db, 'pedidos', pedidoEditando.value.id)
+    const refPedidoEditado = docSucursal('pedidos', pedidoEditando.value.id)
 
     // Leemos el estado y los productos directo de Firestore (no el
     // caché local) justo antes de decidir si hay que regresarlo a
@@ -1628,14 +1691,14 @@ totalTarjeta: datosPago
     // de Firestore en segundo plano, para que los pedidos web sigan la
     // misma secuencia.
     const numeroPedido = tomarNumeroPedido()
-    const refNuevo = doc(collection(db, 'pedidos'))
+    const refNuevo = doc(colSucursal('pedidos'))
     vigilarEscritura(setDoc(refNuevo, {
       cliente: nombre,
       numero: numeroPedido,
       turnoId: turnoActual.value?.id || null,
       origen: 'pos',
       sucursal: 'Mostrador',
-      sucursalId: 'pos',
+      sucursalId: sucursalId.value,
       tipoOrden,
       comentario: '',
       productos,
@@ -1651,7 +1714,7 @@ totalTarjeta: datosPago
       totalTarjeta: datosPago?.totalTarjeta ?? null,
       fecha: serverTimestamp()
     }), nombre)
-    registrarNumeroUsado(numeroPedido)
+    registrarNumeroUsado(numeroPedido, refContador(negocioId.value, sucursalId.value))
   }
 
 //     // Imprime el ticket de cocina
@@ -1825,7 +1888,21 @@ function abrirCobro(nombre) {
   cobroAbierto.value = true
 }
 
+// Cobrar sin turno dejaría ese dinero fuera de todo cierre de caja
+function requiereTurno(accion) {
+  if (turnoActual.value) return true
+  mostrarAviso(`Abre un turno para ${accion}.`)
+  tabActivo.value = 'pos'
+  return false
+}
+
+function irAAbrirTurno() {
+  menuAbierto.value = false
+  tabActivo.value = 'pos'
+}
+
 function cobrarPedidoExistente(pedido) {
+  if (!requiereTurno('cobrar')) return
   pedidoEditandoId.value = pedido.id
   cobroPedidoId.value = pedido.id
   orden.value = lineasDesdePedido(pedido)
@@ -2004,7 +2081,7 @@ async function confirmarDivision() {
 
 
  // if (pedidoACobrar.value) {
-  //   await updateDoc(doc(db, 'pedidos', pedidoACobrar.value.id), {
+  //   await updateDoc(docSucursal('pedidos', pedidoACobrar.value.id), {
   //     estado: 'entregado',
   //     pagado: true,
   //     montoPagado: pedidoACobrar.value.total,
@@ -2048,11 +2125,11 @@ async function cambiarEstado(id, nuevoEstado) {
       const { cantidadNueva, ...resto } = p
       return resto
     })
-    vigilarEscritura(updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado, productos: productosLimpios }), pedido?.cliente || 'pedido')
+    vigilarEscritura(updateDoc(docSucursal('pedidos', id), { estado: nuevoEstado, productos: productosLimpios }), pedido?.cliente || 'pedido')
     return
   }
   const pedido = pedidos.value.find(p => p.id === id)
-  vigilarEscritura(updateDoc(doc(db, 'pedidos', id), { estado: nuevoEstado }), pedido?.cliente || 'pedido')
+  vigilarEscritura(updateDoc(docSucursal('pedidos', id), { estado: nuevoEstado }), pedido?.cliente || 'pedido')
 }
 
 // ── Turno ──
@@ -2143,7 +2220,7 @@ function registrarGasto() {
     fecha: new Date()
   }
   // Sin await (igual que los pedidos): aparece al instante y se sincroniza solo
-  updateDoc(doc(db, 'turnos', turnoActual.value.id), { gastos: arrayUnion(gasto) })
+  updateDoc(docSucursal('turnos', turnoActual.value.id), { gastos: arrayUnion(gasto) })
     .catch(e => {
       console.error('Error al registrar gasto:', e)
       mostrarAviso(`No se pudo registrar el gasto "${gasto.concepto}". Intenta otra vez.`)
@@ -2156,7 +2233,7 @@ function registrarGasto() {
 function eliminarGasto(id) {
   if (!turnoActual.value) return
   const restantes = (turnoActual.value.gastos || []).filter(g => g.id !== id)
-  updateDoc(doc(db, 'turnos', turnoActual.value.id), { gastos: restantes })
+  updateDoc(docSucursal('turnos', turnoActual.value.id), { gastos: restantes })
     .catch(e => {
       console.error('Error al eliminar gasto:', e)
       mostrarAviso('No se pudo eliminar el gasto. Intenta otra vez.')
@@ -2238,7 +2315,7 @@ function cerrarAlerta() {
 async function borrarHistorialCompleto() {
   if (!confirm('¿Eliminar permanentemente todos los pedidos entregados y cancelados?')) return
   try {
-    const q = query(collection(db, 'pedidos'), where('estado', 'in', ['entregado', 'cancelado']))
+    const q = query(colSucursal('pedidos'), where('estado', 'in', ['entregado', 'cancelado']))
     const snap = await getDocs(q)
     const batch = writeBatch(db)
     snap.docs.forEach(d => batch.delete(d.ref))
@@ -2250,7 +2327,7 @@ async function borrarHistorialCompleto() {
 }
 
 async function limpiarDocumentosVacios() {
-  const snap = await getDocs(collection(db, 'pedidos'))
+  const snap = await getDocs(colSucursal('pedidos'))
   const batch = writeBatch(db)
   let contador = 0
 
@@ -2281,7 +2358,7 @@ function depurarAntiguos() {
   if (!viejos.length) return
   const batch = writeBatch(db)
   // Un batch de Firestore acepta hasta 500 operaciones
-  viejos.slice(0, 450).forEach(p => batch.delete(doc(db, 'pedidos', p.id)))
+  viejos.slice(0, 450).forEach(p => batch.delete(docSucursal('pedidos', p.id)))
   batch.commit().catch(e => console.warn('No se pudieron limpiar pedidos viejos:', e))
 }
 
@@ -2317,7 +2394,7 @@ function formatTiempo(fecha) {
 }
 
 async function cerrarSesion() {
-  try { await signOut(auth); router.push('/login') }
+  try { await signOut(auth); limpiarSesion(); router.push('/login') }
   catch (e) { console.error('Error al cerrar sesión:', e) }
 }
 
@@ -2329,12 +2406,13 @@ let idTurnoPendiente = null
 
 function abrirTurno() {
   const fondo = Number(fondoInicial.value) || 0
-  if (!idTurnoPendiente) idTurnoPendiente = doc(collection(db, 'turnos')).id
+  if (!idTurnoPendiente) idTurnoPendiente = doc(colSucursal('turnos')).id
 
   // Sin await: el turno aparece en esta tablet al instante y se manda al
   // servidor por detrás.
-  setDoc(doc(db, 'turnos', idTurnoPendiente), {
+  setDoc(docSucursal('turnos', idTurnoPendiente), {
     abierto: true,
+    sucursalId: sucursalId.value,
     fondoInicial: fondo,
     fechaApertura: serverTimestamp(),
     fechaCierre: null,
@@ -2353,9 +2431,8 @@ function abrirTurno() {
   // El primer pedido de cada turno nuevo siempre empieza en #001,
   // aunque sea el mismo día y ya hayas cerrado un turno anterior.
   ultimoNumeroLocal.value = 0
-  reiniciarContadorPedidos().catch(e => console.warn('No se pudo reiniciar el contador web:', e))
+  reiniciarContadorPedidos(refContador(negocioId.value, sucursalId.value)).catch(e => console.warn('No se pudo reiniciar el contador web:', e))
 
-  modalAbrirTurno.value = false
   fondoInicial.value = null
 }
 
@@ -2369,6 +2446,20 @@ function intentarCerrarTurno() {
   modalCerrarTurno.value = true
 }
 
+// Para el resumen del turno: a qué producto del catálogo pertenece una
+// línea de pedido. Así "Tortilla Grande Pollo" y "Tortilla Grande Res"
+// suman juntas en "Tortilla Grande" (la opción se cuenta aparte).
+function identificarLinea(linea) {
+  const id = idDeProductoGuardado(linea, 0)
+  const producto = id.startsWith('x') ? null : buscarProducto(id)
+  if (producto) return { clave: producto.id, nombre: producto.nombre }
+  // No está en el catálogo (producto borrado o pedido web): se agrupa por nombre
+  const nombre = linea.opcion && linea.nombre?.endsWith(` ${linea.opcion}`)
+    ? linea.nombre.slice(0, -(linea.opcion.length + 1))
+    : (linea.nombre || 'Sin nombre')
+  return { clave: `nombre:${nombre}`, nombre }
+}
+
 function cerrarTurno() {
   if (!turnoActual.value) return
   // Si no se escribió cuánto se contó, se guarda como "sin conteo" (null),
@@ -2377,7 +2468,7 @@ function cerrarTurno() {
   const contado = efectivoContado.value === null || efectivoContado.value === ''
     ? null
     : Number(efectivoContado.value)
-  updateDoc(doc(db, 'turnos', turnoActual.value.id), {
+  updateDoc(docSucursal('turnos', turnoActual.value.id), {
     abierto: false,
     fechaCierre: serverTimestamp(),
     ventasEfectivo: ventasEfectivo.value,
@@ -2387,7 +2478,10 @@ function cerrarTurno() {
     totalGastos: totalGastos.value,
     efectivoEsperado: efectivoEsperado.value,
     efectivoContado: contado,
-    diferencia: contado === null ? null : contado - efectivoEsperado.value
+    diferencia: contado === null ? null : contado - efectivoEsperado.value,
+    // Ventas por producto y por hora: los pedidos se borran a las 24 h,
+    // esto queda para las gráficas del historial
+    resumen: resumenDeTurno(pedidosTurno.value, identificarLinea)
   }).catch(e => {
     console.error('Error al cerrar turno:', e)
     mostrarAviso('No se pudo cerrar el turno. Revisa la conexión e intenta otra vez.')
@@ -2461,7 +2555,7 @@ onMounted(() => {
 
     // ── Escucha el turno abierto ──
   const qTurno = query(
-    collection(db, 'turnos'),
+    colSucursal('turnos'),
     where('abierto', '==', true),
     limit(1)
   )
@@ -2473,11 +2567,9 @@ onMounted(() => {
       ? null
       : { id: snap.docs[0].id, ...snap.docs[0].data({ serverTimestamps: 'estimate' }) }
     cargandoTurno.value = false
-    if (!turnoActual.value) modalAbrirTurno.value = true
-    else modalAbrirTurno.value = false
   })
 
-  const q = query(collection(db, 'pedidos'), orderBy('fecha', 'desc'))
+  const q = query(colSucursal('pedidos'), orderBy('fecha', 'desc'))
   unsubscribe = onSnapshot(q, (snap) => {
     // Igual que arriba: un pedido recién guardado trae la hora de la
     // tablet hasta que el servidor la confirme, así aparece de inmediato
@@ -2526,6 +2618,9 @@ onUnmounted(() => {
 
 .pos {
   height: 100vh;
+  /* Alto real visible. En Chrome de Android (Sunmi) 100vh incluye la barra
+     del navegador y la parte de abajo (Cobrar) quedaba escondida. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: #f7f4f0;
@@ -2600,7 +2695,9 @@ onUnmounted(() => {
   width: 320px; max-width: 85vw; height: 100%; background: #fffaf5;
   padding: 24px; display: flex; flex-direction: column; gap: 24px;
   border-right: 1px solid #f0e4d8;
+  overflow-y: auto; /* en pantallas bajas (Sunmi) el menú se desplaza */
 }
+.drawer > * { flex-shrink: 0; }
 
 .drawer__header { display: flex; align-items: center; justify-content: space-between; }
 .drawer__header h2 { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; color: #2c1a0e; margin: 0; font-size: 20px; }
@@ -2608,6 +2705,27 @@ onUnmounted(() => {
   width: 30px; height: 30px; border-radius: 50%; border: none;
   background: #f0e4d8; color: #2c1a0e; cursor: pointer; font-size: 13px;
 }
+
+.drawer__sucursal {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: -10px; padding: 12px 14px; border-radius: 14px; background: #f4ede5;
+}
+.drawer__sucursal-textos { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.drawer__sucursal-label {
+  font-size: 10.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+.drawer__sucursal-nombre { font-size: 16px; font-weight: 800; color: #2c1a0e; }
+.drawer__sucursal-cambiar {
+  flex-shrink: 0; height: 34px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+  border: 1.5px solid #e6dacd; background: #ffffff; color: #6b5444; font-size: 13px; font-weight: 700;
+}
+.drawer__sucursales { display: flex; flex-direction: column; gap: 6px; margin-top: -14px; }
+.drawer__sucursal-opcion {
+  height: 44px; padding: 0 14px; border-radius: 11px; cursor: pointer; text-align: left;
+  border: 1.5px solid #e6dacd; background: #ffffff; color: #2c1a0e; font-size: 14.5px; font-weight: 700;
+}
+.drawer__sucursal-opcion--activa { border-color: #e8621a; color: #c04e10; }
 
 .drawer__titulo {
   font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -2675,8 +2793,11 @@ onUnmounted(() => {
 .contenido { flex: 1; overflow: hidden; padding: 16px; }
 
 /* ── VISTA POS ── */
-.pos-view { height: 100%; display: grid; grid-template-columns: 1fr 420px; gap: 16px; }
-.pos-grid-zona { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+/* minmax(0, 1fr): sin esto la fila de categorías (que no se parte) ensancha
+   la columna de productos y empuja el pedido fuera de la pantalla en
+   pantallas más angostas que el iPad (Sunmi). */
+.pos-view { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; }
+.pos-grid-zona { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
 
 .pos-productos {
   flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -2776,6 +2897,7 @@ onUnmounted(() => {
   display: flex; justify-content: space-between; align-items: center;
   padding: 16px 18px; background: #1a0e06; color: white; font-weight: 700;
 }
+.resumen__total span { font-size: 17px; font-weight: 700; }
 .resumen__total strong { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 26px; color: #f5a623; }
 
 .resumen__saldo {
@@ -3190,7 +3312,7 @@ onUnmounted(() => {
 .cobro {
   background: #ffffff; border-radius: 22px; width: 100%; max-width: 460px;
   padding: 22px; display: flex; flex-direction: column; gap: 16px;
-  max-height: 92vh; overflow-y: auto;
+  max-height: 92vh; max-height: 92dvh; overflow-y: auto;
   box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
 .cobro__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -3321,7 +3443,7 @@ onUnmounted(() => {
 .gastos {
   background: #ffffff; border-radius: 22px; width: 100%; max-width: 520px;
   padding: 22px; display: flex; flex-direction: column; gap: 18px;
-  max-height: calc(100vh - 48px); overflow-y: auto;
+  max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto;
   box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
 .gastos__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -3428,26 +3550,143 @@ onUnmounted(() => {
 .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform 0.25s cubic-bezier(0.32,0.72,0,1); }
 .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(-100%); }
 
-/* ── Responsive ── */
-/* Tablets en horizontal (10", 8" y similares): mantiene las 2 columnas, solo ajusta proporciones */
+/* ── Responsive ──
+   Pantallas donde se usa: iPad (1180×820, 1024×768), Sunmi D3 mini (10.1",
+   horizontal; según la escala de Android queda entre 1280×800 y 853×533,
+   menos la barra del navegador) y teléfonos/Sunmi de mano en vertical. */
+
+/* Tablets en horizontal: 2 columnas, solo ajusta proporciones */
 @media (max-width: 1180px) {
-  .pos-view { grid-template-columns: 1fr 360px; }
+  .pos-view { grid-template-columns: minmax(0, 1fr) 360px; }
   .pos-productos { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+}
+
+/* Tablets más pequeñas o con escala grande (Sunmi a 960 / 853 de ancho) */
+@media (max-width: 1000px) {
+  .pos-view { grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; }
+  .contenido { padding: 12px; }
+  .pos-productos { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .producto-btn { min-height: 112px; padding: 16px; }
+  .producto-btn__nombre { font-size: 18px; }
+  .producto-btn__precio { font-size: 18px; }
+  .nav-tab { padding: 0 11px; font-size: 13.5px; }
+  .lista-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+}
+
+/* Pantallas bajas en horizontal (Sunmi con la barra de Chrome, iPad con
+   teclado): menos alto en todo para que Cobrar siempre se vea */
+@media (max-height: 700px) and (min-width: 681px) {
+  .navbar { height: 52px; }
+  .contenido { padding: 10px 12px; }
+  .pos-view { gap: 12px; }
+  .pos-grid-zona { gap: 8px; }
+  .producto-btn { min-height: 92px; padding: 14px; gap: 6px; border-radius: 12px; }
+  .producto-btn__nombre { font-size: 17px; }
+  .producto-btn__precio { font-size: 17px; }
+  .categoria-btn { padding: 10px 18px; font-size: 14px; }
+  .resumen__header { padding: 10px 14px; }
+  .resumen__header h2 { font-size: 17px; }
+  .resumen__lista { padding: 8px 14px; gap: 8px; }
+  .resumen__vacio { font-size: 18px; padding: 16px 0; }
+  .resumen__total { padding: 10px 14px; }
+  .resumen__total strong { font-size: 22px; }
+  .resumen__saldo { padding: 8px 14px; }
+  .resumen__acciones { grid-template-columns: 1fr 1fr 1.3fr; padding: 8px; gap: 6px; }
+  .btn { padding: 14px 8px; font-size: 15px; }
+  .btn--cobrar { grid-column: auto; padding: 14px 8px; font-size: 16px; }
+  .editando-banner { padding: 8px 14px; }
+  .editando-banner__info strong { font-size: 16px; }
+}
+
+/* Muy bajas (Sunmi con escala grande y barra de Chrome: ~450 de alto) */
+@media (max-height: 520px) and (min-width: 681px) {
+  .navbar { height: 46px; }
+  .producto-btn { min-height: 74px; padding: 10px 12px; }
+  .producto-btn__nombre { font-size: 15px; }
+  .producto-btn__precio { font-size: 15px; }
+  .categoria-btn { padding: 8px 14px; font-size: 13px; }
+  .resumen__item-nombre { font-size: 14.5px; }
+  .btn { padding: 11px 6px; font-size: 14px; }
+  .btn--cobrar { padding: 11px 6px; font-size: 15px; }
 }
 
 /* Pantallas angostas: Sunmi de mano en modo celular, teléfonos */
 @media (max-width: 680px) {
-  .pos-view { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .pos-resumen { max-height: 44vh; }
+  .pos-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .pos-resumen { max-height: 44vh; max-height: 44dvh; }
   .pos-productos { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .producto-btn { min-height: 96px; padding: 14px; }
+  .producto-btn__nombre { font-size: 17px; }
+  .producto-btn__precio { font-size: 17px; }
+  .resumen__acciones { grid-template-columns: 1fr 1fr 1.3fr; }
+  .btn--cobrar { grid-column: auto; padding: 18px 8px; font-size: 16px; }
 }
 
 @media (max-width: 680px) {
   .navbar { height: 54px; padding: 0 8px; }
   .nav-tab { padding: 0 10px; font-size: 12.5px; }
   .navbar__divisor { margin: 0 6px; }
+  .navbar__user { display: none; }
   .contenido { padding: 10px; }
   .lista-grid { grid-template-columns: 1fr; }
+}
+
+/* Cobro en pantallas bajas (Sunmi horizontal): en dos columnas, para que
+   "Confirmar cobro" se vea sin tener que desplazar */
+@media (max-height: 600px) and (min-width: 681px) {
+  .cobro-overlay { padding: 10px; }
+  .cobro {
+    max-width: 760px; max-height: calc(100dvh - 20px); padding: 18px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: min-content;
+    column-gap: 20px; row-gap: 12px; align-items: start;
+  }
+  .cobro__header { grid-column: 1 / -1; }
+  .cobro__monto { grid-column: 1; grid-row: 2; padding: 12px 16px; }
+  .cobro__monto-valor { font-size: 32px; }
+  .cobro > .segmento { grid-column: 1; grid-row: 3; }
+  .cobro__efectivo, .cobro__nota-tarjeta { grid-column: 2; grid-row: 2 / span 3; }
+  .cobro__acciones { grid-column: 1; grid-row: 4; }
+}
+
+/* ── SIN TURNO ── */
+.sin-turno { height: 100%; overflow-y: auto; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.sin-turno__card {
+  width: 100%; max-width: 440px; margin: auto;
+  background: #ffffff; border: 1px solid #efe6dc; border-radius: 22px; padding: 28px;
+  box-shadow: 0 1px 2px rgba(44,26,14,0.04), 0 10px 30px rgba(44,26,14,0.06);
+  display: flex; flex-direction: column;
+}
+.sin-turno__titulo { margin: 0; font-size: 22px; font-weight: 800; color: #2c1a0e; }
+.sin-turno__sub { margin: 6px 0 22px; font-size: 14px; font-weight: 500; line-height: 1.5; color: #8a7362; }
+.sin-turno__label {
+  margin-bottom: 8px; font-size: 11.5px; font-weight: 800; color: #b3a394;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.sin-turno__campo {
+  display: flex; align-items: center; gap: 6px; height: 58px; padding: 0 16px;
+  border: 1.5px solid #e6dacd; border-radius: 14px; background: #faf6f1;
+}
+.sin-turno__campo:focus-within { border-color: #e8621a; background: #ffffff; }
+.sin-turno__q { font-size: 20px; font-weight: 800; color: #b3a394; }
+.sin-turno__input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font-size: 24px; font-weight: 800; color: #2c1a0e; font-variant-numeric: tabular-nums;
+}
+.sin-turno__rapidos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.sin-turno__rapido {
+  height: 42px; border-radius: 11px; border: 1.5px solid #e6dacd; background: #ffffff; cursor: pointer;
+  font-size: 14px; font-weight: 700; color: #6b5444;
+}
+.sin-turno__rapido--activo { border-color: #2c1a0e; background: #2c1a0e; color: #ffffff; }
+.sin-turno__ok {
+  margin-top: 20px; height: 56px; border: none; border-radius: 14px; cursor: pointer;
+  background: #e8621a; color: #ffffff; font-size: 17px; font-weight: 800;
+}
+.sin-turno__ok:active { background: #c04e10; }
+@media (max-height: 560px) {
+  .sin-turno__card { padding: 20px; }
+  .sin-turno__sub { margin-bottom: 14px; }
+  .sin-turno__ok { margin-top: 14px; height: 50px; }
 }
 
 /* ── TURNOS ── */
@@ -3460,7 +3699,7 @@ onUnmounted(() => {
 .turno-modal {
   background: white; border-radius: 24px; padding: 32px;
   width: 100%; max-width: 500px; text-align: center;
-  max-height: 92vh; overflow-y: auto;
+  max-height: 92vh; max-height: 92dvh; overflow-y: auto;
 }
 
 .turno-modal h2 {
@@ -3569,6 +3808,7 @@ onUnmounted(() => {
 }
 .drawer__btn--historial { color: #2c1a0e; }
 .drawer__btn--cerrar-turno { color: #e8621a; }
+.drawer__btn--abrir-turno { color: #2f8c4a; }
 .drawer__btn--extras { color: #2c1a0e; }
 .drawer__btn--gastos {
   color: #2c1a0e; display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -3586,7 +3826,7 @@ onUnmounted(() => {
 }
 .dividir {
   background: #ffffff; border-radius: 22px;
-  width: 100%; max-width: 920px; max-height: 92vh;
+  width: 100%; max-width: 920px; max-height: 92vh; max-height: 92dvh;
   display: flex; flex-direction: column; overflow: hidden;
   box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
@@ -3723,7 +3963,17 @@ onUnmounted(() => {
 .dividir__confirmar:hover:not(:disabled) { background: #24733b; }
 .dividir__confirmar:disabled { background: #e9e1d8; color: #b3a394; cursor: not-allowed; }
 
-@media (max-width: 900px) {
+/* Dividir cuenta: en pantallas bajas y anchas (Sunmi horizontal) se quedan
+   las dos columnas, cada una con su propio desplazamiento, y todo más compacto */
+@media (max-height: 600px) and (min-width: 681px) {
+  .dividir-overlay { padding: 10px; }
+  .dividir { max-height: calc(100dvh - 20px); }
+  .dividir__head { padding: 12px 20px; }
+  .dividir__col { padding: 12px 18px; gap: 10px; }
+  .dividir__footer { padding: 10px 20px; flex-direction: row; align-items: center; gap: 16px; }
+}
+
+@media (max-width: 900px) and (min-height: 601px), (max-width: 680px) {
   .dividir__cuerpo { grid-template-columns: 1fr; overflow-y: auto; }
   .dividir__col { overflow: visible; }
   .dividir__col--cobro { border-left: none; border-top: 1px solid #f2ebe3; }

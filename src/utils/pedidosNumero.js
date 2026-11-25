@@ -22,7 +22,7 @@ import { doc, runTransaction, setDoc } from 'firebase/firestore'
 // desde la web, Firestore rechazaría la lectura por permisos.
 //
 // En cambio, aquí solo leemos y escribimos UN documento contador
-// (colección "contadores", doc "pedidosDiarios"), que sí dejamos
+// (contadores/pedidosDiarios de cada sucursal), que sí dejamos
 // abierto a cualquiera en las reglas. La transacción garantiza que,
 // aunque lleguen dos pedidos al mismo tiempo (uno del POS y uno de
 // la web, por ejemplo), nunca se repita el mismo número.
@@ -40,9 +40,15 @@ function fechaLocalHoy() {
   return `${year}-${mes}-${dia}`
 }
 
-export async function siguienteNumeroPedido() {
+// Cada sucursal tiene su propio contador (su propio #001):
+// negocios/{negocio}/sucursales/{sucursal}/contadores/pedidosDiarios
+export function refContador(negocioId, sucursalId) {
+  return doc(db, 'negocios', negocioId, 'sucursales', sucursalId, 'contadores', 'pedidosDiarios')
+}
+
+export async function siguienteNumeroPedido(negocioId, sucursalId) {
   const hoy = fechaLocalHoy()
-  const ref = doc(db, 'contadores', 'pedidosDiarios')
+  const ref = refContador(negocioId, sucursalId)
 
   return await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref)
@@ -64,8 +70,7 @@ export async function siguienteNumeroPedido() {
 // usó, así el próximo pedido web sigue la misma secuencia. Solo sube el
 // contador, nunca lo baja. Corre en segundo plano: si falla (por ejemplo,
 // sin internet), el pedido del POS ya quedó guardado igual.
-export function registrarNumeroUsado(numero) {
-  const ref = doc(db, 'contadores', 'pedidosDiarios')
+export function registrarNumeroUsado(numero, ref) {
   return runTransaction(db, async (transaction) => {
     const snap = await transaction.get(ref)
     const actual = snap.exists() ? (snap.data().ultimo || 0) : 0
@@ -77,7 +82,6 @@ export function registrarNumeroUsado(numero) {
 
 // Reinicia el contador a 0 (el próximo pedido será #001).
 // Se llama desde abrirTurno() en POS.vue, justo al abrir un turno nuevo.
-export async function reiniciarContadorPedidos() {
-  const ref = doc(db, 'contadores', 'pedidosDiarios')
+export async function reiniciarContadorPedidos(ref) {
   await setDoc(ref, { fecha: fechaLocalHoy(), ultimo: 0 })
 }

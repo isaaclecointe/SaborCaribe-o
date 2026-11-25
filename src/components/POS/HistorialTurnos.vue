@@ -12,13 +12,40 @@
 
     <main class="hist__main">
 
+      <!-- Sucursal (solo quien ve más de una) -->
+      <div v-if="sucursales.length > 1" class="hist__filtro" role="radiogroup" aria-label="Sucursal">
+        <button
+          class="hist__filtro-op" :class="{ 'hist__filtro-op--activa': filtro === 'todas' }"
+          role="radio" :aria-checked="filtro === 'todas'" @click="cambiarFiltro('todas')"
+        >Todas</button>
+        <button
+          v-for="s in sucursalesColor" :key="s.id"
+          class="hist__filtro-op" :class="{ 'hist__filtro-op--activa': filtro === s.id }"
+          role="radio" :aria-checked="filtro === s.id" @click="cambiarFiltro(s.id)"
+        >
+          <span class="hist__filtro-punto" :style="{ background: s.color }"></span>{{ s.nombre }}
+        </button>
+      </div>
+
+      <!-- Turnos / Gráficas -->
+      <div class="hist__vistas" role="tablist">
+        <button
+          class="hist__vista" :class="{ 'hist__vista--activa': vista === 'turnos' }"
+          role="tab" :aria-selected="vista === 'turnos'" @click="cambiarVista('turnos')"
+        >Turnos</button>
+        <button
+          class="hist__vista" :class="{ 'hist__vista--activa': vista === 'graficas' }"
+          role="tab" :aria-selected="vista === 'graficas'" @click="cambiarVista('graficas')"
+        >Gráficas</button>
+      </div>
+
       <!-- Resumen de todos los turnos cerrados -->
-      <section class="resumen">
+      <section v-if="vista === 'turnos'" class="resumen">
         <div class="resumen__card resumen__card--destacado">
           <span class="resumen__label">Total vendido</span>
           <span class="resumen__valor">Q{{ fmt(totalGeneral) }}</span>
           <span class="resumen__nota">
-            {{ turnos.length }} {{ turnos.length === 1 ? 'turno cerrado' : 'turnos cerrados' }}
+            {{ turnosFiltrados.length }} {{ turnosFiltrados.length === 1 ? 'turno cerrado' : 'turnos cerrados' }}
           </span>
         </div>
         <div class="resumen__card">
@@ -50,12 +77,12 @@
       </div>
 
       <!-- Respuesta vacía de la caché de la tablet: todavía falta la del servidor -->
-      <div v-else-if="turnos.length === 0 && soloCache" class="hist__estado">
+      <div v-else-if="turnosFiltrados.length === 0 && soloCache" class="hist__estado">
         <p class="hist__estado-titulo">Conectando con el servidor…</p>
         <p class="hist__estado-texto">Si esto no cambia en unos segundos, revisa el internet de la tablet.</p>
       </div>
 
-      <div v-else-if="turnos.length === 0" class="hist__estado">
+      <div v-else-if="turnosFiltrados.length === 0" class="hist__estado">
         <p class="hist__estado-titulo">Aún no hay turnos cerrados</p>
         <p class="hist__estado-texto">Cuando cierres tu primer turno, su resumen aparecerá aquí.</p>
       </div>
@@ -64,6 +91,15 @@
         <p v-if="soloCache" class="hist__aviso-cache">
           Mostrando lo guardado en esta tablet; se actualiza solo cuando vuelva la conexión.
         </p>
+
+        <GraficasVentas
+          v-if="vista === 'graficas'"
+          :turnos="turnosFiltrados"
+          :sucursales="sucursalesColor"
+          :comparar="filtro === 'todas' && sucursales.length > 1"
+        />
+
+        <template v-else>
         <h2 class="hist__seccion">Turnos cerrados</h2>
 
         <div class="turnos-lista">
@@ -73,6 +109,9 @@
             <div class="turno__head">
               <div class="turno__fechas">
                 <h3 class="turno__fecha">{{ formatFecha(t.fechaApertura) }}</h3>
+                <span v-if="filtro === 'todas' && sucursales.length > 1" class="turno__sucursal">
+                  <span class="hist__filtro-punto" :style="{ background: colorDe(t.sucursalId) }"></span>{{ nombreSucursal(t.sucursalId) }}
+                </span>
                 <p class="turno__horas">
                   {{ rangoHoras(t) }}
                   <span v-if="duracion(t)" class="turno__duracion">· {{ duracion(t) }}</span>
@@ -147,6 +186,7 @@
 
           </article>
         </div>
+        </template>
       </template>
 
     </main>
@@ -154,15 +194,53 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { db } from '../../firebase.js'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import GraficasVentas from './GraficasVentas.vue'
+import { onSnapshot, query, where } from 'firebase/firestore'
+import { useNegocio } from '../../composables/useNegocio.js'
+import { conColores } from '../../utils/estadisticas.js'
 
 const router = useRouter()
 const turnos = ref([])
+
+// ── Sucursales ──
+// El dueño ve todas; un encargado, solo las suyas (ver useNegocio.js)
+const { sucursales, negocioId, colSucursal } = useNegocio()
+const sucursalesColor = computed(() => conColores(sucursales.value))
+const colorDe = id => sucursalesColor.value.find(s => s.id === id)?.color || '#b3a394'
+const nombreSucursal = id => sucursalesColor.value.find(s => s.id === id)?.nombre || 'Sucursal'
+
+function leerFiltro() {
+  try { return localStorage.getItem(`historial-sucursal:${negocioId.value}`) || 'todas' } catch { return 'todas' }
+}
+const filtroGuardado = ref(leerFiltro())
+// Si la sucursal guardada ya no existe (o no es suya), vuelve a "Todas"
+const filtro = computed(() =>
+  filtroGuardado.value === 'todas' || sucursales.value.some(s => s.id === filtroGuardado.value)
+    ? filtroGuardado.value
+    : 'todas'
+)
+function cambiarFiltro(id) {
+  filtroGuardado.value = id
+  try { localStorage.setItem(`historial-sucursal:${negocioId.value}`, id) } catch { /* sin almacenamiento */ }
+}
+
+const turnosFiltrados = computed(() =>
+  filtro.value === 'todas' ? turnos.value : turnos.value.filter(t => t.sucursalId === filtro.value)
+)
+
+// ── Turnos / Gráficas ──
+// La pestaña se recuerda en esta tablet (si no se puede, empieza en Turnos)
+function leerVista() {
+  try { return localStorage.getItem('historial-vista') === 'graficas' ? 'graficas' : 'turnos' } catch { return 'turnos' }
+}
+const vista = ref(leerVista())
+function cambiarVista(v) {
+  vista.value = v
+  try { localStorage.setItem('historial-vista', v) } catch { /* sin almacenamiento: no pasa nada */ }
+}
 const cargando = ref(true)
-let unsub = null
 
 // ── Formato ──
 // Separador de miles al estilo de Guatemala: Q2,919
@@ -251,47 +329,76 @@ function cuadreDe(t) {
 }
 
 const turnosVista = computed(() =>
-  turnos.value.map(t => ({ ...t, gastosTotal: totalGastosDe(t), caja: cuadreDe(t) }))
+  turnosFiltrados.value.map(t => ({ ...t, gastosTotal: totalGastosDe(t), caja: cuadreDe(t) }))
 )
 
 // ── Totales generales ──
 const totalEfectivoGeneral = computed(() =>
-  turnos.value.reduce((s, t) => s + (t.ventasEfectivo || 0), 0)
+  turnosFiltrados.value.reduce((s, t) => s + (t.ventasEfectivo || 0), 0)
 )
 const totalTarjetaGeneral = computed(() =>
-  turnos.value.reduce((s, t) => s + (t.ventasTarjeta || 0), 0)
+  turnosFiltrados.value.reduce((s, t) => s + (t.ventasTarjeta || 0), 0)
 )
 const totalGeneral = computed(() =>
   totalEfectivoGeneral.value + totalTarjetaGeneral.value
 )
 const totalGastosGeneral = computed(() =>
-  turnos.value.reduce((s, t) => s + totalGastosDe(t), 0)
+  turnosFiltrados.value.reduce((s, t) => s + totalGastosDe(t), 0)
 )
 
 // ── Carga desde Firebase ──
 const errorCarga = ref('')   // mensaje de error de Firebase, si lo hay
 const soloCache = ref(false) // true mientras solo tenemos lo guardado en la tablet
 
+// Un listener por sucursal (el dueño, 3; un encargado, la suya). Cada
+// turno se marca con su sucursal, que sale de la ruta en Firebase.
+let unsubs = []
+const porSucursal = ref({})   // { sucursalId: { turnos, fromCache, listo } }
+
+function detener() {
+  unsubs.forEach(u => u())
+  unsubs = []
+}
+
 function escuchar() {
-  if (unsub) unsub()
-  // Sin orderBy en la consulta: se ordena aquí, en la tablet. Así la consulta
-  // no depende de un índice compuesto en Firebase (igual que en el POS).
-  const q = query(collection(db, 'turnos'), where('abierto', '==', false))
-  // includeMetadataChanges: avisa también cuando llega la respuesta del
-  // servidor, no solo la de la caché de la tablet.
-  unsub = onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
-    turnos.value = snap.docs
-      .map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
-      .sort((a, b) => (aFecha(b.fechaCierre) || 0) - (aFecha(a.fechaCierre) || 0))
-    soloCache.value = snap.metadata.fromCache
-    errorCarga.value = ''
-    cargando.value = false
-  }, (err) => {
-    console.error('Error cargando turnos:', err)
-    errorCarga.value = err?.code || err?.message || 'error desconocido'
-    cargando.value = false
+  detener()
+  porSucursal.value = {}
+  const ids = sucursales.value.map(s => s.id)
+  if (!ids.length) { cargando.value = false; return }
+
+  ids.forEach(id => {
+    // Sin orderBy en la consulta: se ordena aquí, en la tablet. Así la consulta
+    // no depende de un índice compuesto en Firebase (igual que en el POS).
+    const q = query(colSucursal('turnos', id), where('abierto', '==', false))
+    // includeMetadataChanges: avisa también cuando llega la respuesta del
+    // servidor, no solo la de la caché de la tablet.
+    unsubs.push(onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
+      porSucursal.value = {
+        ...porSucursal.value,
+        [id]: {
+          turnos: snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }), sucursalId: id })),
+          fromCache: snap.metadata.fromCache,
+          listo: true
+        }
+      }
+      errorCarga.value = ''
+    }, (err) => {
+      console.error(`Error cargando turnos de ${id}:`, err)
+      errorCarga.value = err?.code || err?.message || 'error desconocido'
+      cargando.value = false
+    }))
   })
 }
+
+// Junta los turnos de todas las sucursales cuando ya respondieron todas
+watch(porSucursal, (v) => {
+  const partes = Object.values(v)
+  if (partes.length < sucursales.value.length || partes.some(p => !p.listo)) return
+  turnos.value = partes.flatMap(p => p.turnos)
+    .sort((a, b) => (aFecha(b.fechaCierre) || 0) - (aFecha(a.fechaCierre) || 0))
+  soloCache.value = partes.some(p => p.fromCache)
+  cargando.value = false
+})
 
 function recargar() {
   cargando.value = true
@@ -299,9 +406,10 @@ function recargar() {
   escuchar()
 }
 
-onMounted(escuchar)
+// Arranca, y vuelve a escuchar si cambian las sucursales (ej. el dueño agrega una)
+watch(() => sucursales.value.map(s => s.id).join(','), escuchar, { immediate: true })
 
-onUnmounted(() => { if (unsub) unsub() })
+onUnmounted(detener)
 </script>
 
 <style scoped>
@@ -337,6 +445,33 @@ onUnmounted(() => { if (unsub) unsub() })
 .hist__titulo { margin: 0; font-size: 17px; font-weight: 800; color: #ffffff; }
 
 .hist__main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+/* ── Filtro de sucursal ── */
+.hist__filtro {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+}
+.hist__filtro-op {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid #e6dacd; background: #ffffff; color: #6b5444; font-size: 14px; font-weight: 700;
+}
+.hist__filtro-op--activa { border-color: #2c1a0e; background: #2c1a0e; color: #ffffff; }
+.hist__filtro-punto { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.turno__sucursal {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+  font-size: 13px; font-weight: 700; color: #6b5444;
+}
+
+/* ── Pestañas Turnos / Gráficas ── */
+.hist__vistas {
+  display: flex; gap: 4px; padding: 4px; margin-bottom: 20px;
+  background: #ffffff; border: 1px solid #efe6dc; border-radius: 14px;
+}
+.hist__vista {
+  flex: 1; height: 42px; border: none; border-radius: 10px; cursor: pointer;
+  background: transparent; color: #8a7362; font-size: 15px; font-weight: 700;
+}
+.hist__vista--activa { background: #2c1a0e; color: #ffffff; }
 
 /* ── Resumen general ── */
 .resumen {

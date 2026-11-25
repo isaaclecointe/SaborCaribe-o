@@ -159,6 +159,10 @@ const comentario = ref('')
 const error = ref('')
 const enviando = ref(false)
 
+// Negocio al que pertenece esta página web. Los ids de las sucursales son
+// los mismos que usa el POS (negocios/sabor-caribeno/sucursales/...).
+const NEGOCIO_WEB = 'sabor-caribeno'
+
 const sucursales = [
   { id: 'jicaro',       nombre: 'Sabor Caribeño', lugar: 'El Jícaro' },
   { id: 'yupiltepeque', nombre: 'Sabor Caribeño', lugar: 'Yupiltepeque' },
@@ -192,8 +196,10 @@ async function enviarPedido() {
   // secuencial que usa el POS (así nunca se repite ni se cruza
   // con los pedidos tomados en el mostrador).
   try {
-    const numeroPedido = await siguienteNumeroPedido()
-    await addDoc(collection(db, 'pedidos'), {
+    // Cada sucursal tiene sus propios pedidos y su propia numeración:
+    // negocios/sabor-caribeno/sucursales/{sucursal}/pedidos
+    const numeroPedido = await siguienteNumeroPedido(NEGOCIO_WEB, sucursalSeleccionada.value)
+    await addDoc(collection(db, 'negocios', NEGOCIO_WEB, 'sucursales', sucursalSeleccionada.value, 'pedidos'), {
       numero: numeroPedido,
       origen: 'web',
       cliente: nombre.value,

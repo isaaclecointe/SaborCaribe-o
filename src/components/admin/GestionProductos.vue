@@ -26,9 +26,23 @@
             placeholder="Buscar producto"
             aria-label="Buscar producto"
           />
-          <button class="gp__nuevo" :disabled="estadoCatalogo === 'cargando'" @click="abrirEditor(null)">
+          <button class="gp__nuevo" :disabled="estadoCatalogo === 'cargando' || estadoCatalogo === 'error'" @click="abrirEditor(null)">
             Nuevo producto
           </button>
+        </div>
+
+        <!-- Cada sucursal decide qué vende: el interruptor de cada producto
+             aplica solo a la sucursal elegida aquí -->
+        <div v-if="variasSucursales" class="gp-suc">
+          <span class="gp-suc__label">Disponibilidad en</span>
+          <div class="gp-suc__opciones" role="radiogroup" aria-label="Sucursal">
+            <button
+              v-for="sc in sucursales" :key="sc.id"
+              class="gp-suc__op" :class="{ 'gp-suc__op--activa': sc.id === sucursalVistaId }"
+              role="radio" :aria-checked="sc.id === sucursalVistaId"
+              @click="sucursalVista = sc.id"
+            >{{ sc.nombre }}</button>
+          </div>
         </div>
 
         <div class="gp__filtros">
@@ -41,7 +55,11 @@
           >{{ c }}</button>
         </div>
 
-        <p v-if="estadoCatalogo === 'cargando'" class="gp__vacio">Cargando productos…</p>
+        <div v-if="estadoCatalogo === 'error'" class="gp__falla">
+          <p class="gp__falla-texto">{{ errorCatalogo }}</p>
+          <button class="gp__falla-btn" @click="escucharCatalogo()">Reintentar</button>
+        </div>
+        <p v-else-if="estadoCatalogo === 'cargando'" class="gp__vacio">Cargando productos…</p>
         <p v-else-if="!productosVista.length" class="gp__vacio">No hay productos que coincidan.</p>
 
         <ul v-else class="gp__lista">
@@ -49,7 +67,7 @@
             v-for="(p, i) in productosVista"
             :key="p.id"
             class="gp-fila"
-            :class="{ 'gp-fila--oculto': !p.activo }"
+            :class="{ 'gp-fila--oculto': !visibleAqui(p) }"
           >
             <!-- Ordenar (no mientras se busca: el orden no se entendería) -->
             <div v-if="!busqueda.trim()" class="gp-fila__orden">
@@ -73,7 +91,10 @@
                 {{ p.categoria }}
                 <template v-if="p.opciones.length"> · {{ p.opciones.length }} opciones</template>
                 <span v-if="!p.vaACocina" class="gp-etiqueta">Lo entrega caja</span>
-                <span v-if="!p.activo" class="gp-etiqueta gp-etiqueta--oculto">Oculto</span>
+                <span v-if="!visibleAqui(p)" class="gp-etiqueta gp-etiqueta--oculto">
+                  {{ variasSucursales ? `Oculto en ${nombreVista}` : 'Oculto' }}
+                </span>
+                <span v-if="textoDisponibilidad(p)" class="gp-fila__donde">{{ textoDisponibilidad(p) }}</span>
               </span>
             </button>
 
@@ -83,11 +104,11 @@
 
             <button
               class="gp-switch"
-              :class="{ 'gp-switch--on': p.activo }"
+              :class="{ 'gp-switch--on': visibleAqui(p) }"
               role="switch"
-              :aria-checked="p.activo"
-              :aria-label="p.activo ? 'Visible en caja' : 'Oculto en caja'"
-              :title="p.activo ? 'Visible en caja' : 'Oculto en caja'"
+              :aria-checked="visibleAqui(p)"
+              :aria-label="`${visibleAqui(p) ? 'Visible' : 'Oculto'} en ${variasSucursales ? nombreVista : 'caja'}`"
+              :title="`${visibleAqui(p) ? 'Visible' : 'Oculto'} en ${variasSucursales ? nombreVista : 'caja'}`"
               @click="alternarVisible(p)"
             ><span class="gp-switch__bola"></span></button>
           </li>
@@ -188,8 +209,25 @@
             </span>
           </label>
 
-          <label class="gp-check">
-            <input v-model="form.activo" type="checkbox" class="gp-check__input" />
+          <!-- Varias sucursales: en cuáles se vende -->
+          <div v-if="variasSucursales" class="gp-donde">
+            <span class="gp-donde__titulo">Se vende en</span>
+            <span class="gp-donde__ayuda">Toca una sucursal para mostrarlo u ocultarlo en su caja. Las demás no cambian.</span>
+            <div class="gp-donde__chips">
+              <button
+                v-for="sc in sucursales" :key="sc.id"
+                type="button"
+                class="gp-donde__chip" :class="{ 'gp-donde__chip--si': form.vendeEn.includes(sc.id) }"
+                :aria-pressed="form.vendeEn.includes(sc.id)"
+                @click="alternarSucursal(sc.id)"
+              >
+                <span class="gp-donde__marca">{{ form.vendeEn.includes(sc.id) ? '✓' : '' }}</span>{{ sc.nombre }}
+              </button>
+            </div>
+          </div>
+          <!-- Una sola sucursal: como antes -->
+          <label v-else class="gp-check">
+            <input v-model="visibleUnica" type="checkbox" class="gp-check__input" />
             <span class="gp-check__textos">
               <span class="gp-check__titulo">Visible en caja</span>
               <span class="gp-check__ayuda">Desmárcalo si se agotó o salió del menú. Lo puedes volver a mostrar cuando quieras.</span>
@@ -232,14 +270,39 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
 import { useCatalogoPos } from '../../composables/useCatalogoPos.js'
+import { useNegocio } from '../../composables/useNegocio.js'
 import { CATEGORIAS_SIN_COCINA } from '../../utils/cocina.js'
 
 defineEmits(['cerrar'])
 
 const {
-  estadoCatalogo, todosLosProductos, todasLasCategorias,
-  crearProducto, actualizarProducto, cambiarVisibilidad, eliminarProducto, moverProducto
+  estadoCatalogo, errorCatalogo, escucharCatalogo, todosLosProductos, todasLasCategorias,
+  crearProducto, actualizarProducto, cambiarVisibilidad, eliminarProducto, moverProducto,
+  seVendeEn, buscarProducto
 } = useCatalogoPos()
+
+// ── Sucursales ──
+// El menú es uno solo; cada sucursal decide qué vende. Quien maneja varias
+// sucursales elige arriba de cuál está viendo la disponibilidad (empieza
+// en la de esta tablet). Un encargado solo ve y cambia las suyas.
+const { sucursales, todasLasSucursales, sucursalId } = useNegocio()
+const variasSucursales = computed(() => sucursales.value.length > 1)
+const sucursalVista = ref(sucursalId.value)
+const sucursalVistaId = computed(() =>
+  sucursales.value.some(s => s.id === sucursalVista.value) ? sucursalVista.value : sucursalId.value
+)
+const nombreVista = computed(() => sucursales.value.find(s => s.id === sucursalVistaId.value)?.nombre || '')
+
+const visibleAqui = p => seVendeEn(p, sucursalVistaId.value)
+
+// "Solo en El Jícaro" / "No se vende en ninguna" (vacío si se vende en todas)
+function textoDisponibilidad(p) {
+  if (!variasSucursales.value) return ''
+  const si = sucursales.value.filter(s => seVendeEn(p, s.id))
+  if (si.length === sucursales.value.length) return ''
+  if (!si.length) return 'No se vende en ninguna sucursal'
+  return `Solo en ${si.map(s => s.nombre).join(', ')}`
+}
 
 // ── Lista ──
 const busqueda = ref('')
@@ -284,7 +347,7 @@ function mover(p, direccion) {
 }
 
 function alternarVisible(p) {
-  intentar(() => cambiarVisibilidad(p.id, !p.activo))
+  intentar(() => cambiarVisibilidad(p.id, !visibleAqui(p), sucursalVistaId.value))
 }
 
 // ── Editor ──
@@ -294,7 +357,19 @@ const cocinaTocada = ref(false)
 const errores = ref([])
 const form = reactive({
   id: null, nombre: '', nombreCorto: '', categoria: '', precio: null,
-  conOpciones: false, opciones: [], vaACocina: true, activo: true
+  conOpciones: false, opciones: [], vaACocina: true,
+  vendeEn: []   // ids de las sucursales (de las que ve esta persona) donde se vende
+})
+
+function alternarSucursal(id) {
+  const i = form.vendeEn.indexOf(id)
+  i === -1 ? form.vendeEn.push(id) : form.vendeEn.splice(i, 1)
+}
+
+// Con una sola sucursal, el mismo dato como casilla "Visible en caja"
+const visibleUnica = computed({
+  get: () => form.vendeEn.includes(sucursalId.value),
+  set: v => { form.vendeEn = v ? [sucursalId.value] : [] }
 })
 
 function abrirEditor(p) {
@@ -304,14 +379,16 @@ function abrirEditor(p) {
         precio: p.opciones.length ? null : p.precio,
         conOpciones: p.opciones.length > 0,
         opciones: p.opciones.map(o => ({ ...o })),
-        vaACocina: p.vaACocina, activo: p.activo
+        vaACocina: p.vaACocina,
+        vendeEn: sucursales.value.filter(s => seVendeEn(p, s.id)).map(s => s.id)
       }
     : {
         id: null, nombre: '', nombreCorto: '',
         categoria: categoriaFiltro.value !== 'Todas' ? categoriaFiltro.value : '',
         precio: null, conOpciones: false, opciones: [],
         vaACocina: !CATEGORIAS_SIN_COCINA.includes(categoriaFiltro.value),
-        activo: true
+        // Nuevo: se vende en todas las sucursales que maneja esta persona
+        vendeEn: sucursales.value.map(s => s.id)
       })
   cocinaTocada.value = !!p
   confirmandoEliminar.value = false
@@ -362,6 +439,17 @@ function validar() {
   return e
 }
 
+// Sucursales donde NO se vende. Las que esta persona no maneja (un
+// encargado no ve las demás) se dejan como estaban.
+function calcularOcultoEn() {
+  const mias = sucursales.value.map(s => s.id)
+  const original = form.id ? buscarProducto(form.id) : null
+  const ajenasOcultas = original
+    ? todasLasSucursales.value.map(s => s.id).filter(id => !mias.includes(id) && !seVendeEn(original, id))
+    : []
+  return [...ajenasOcultas, ...mias.filter(id => !form.vendeEn.includes(id))]
+}
+
 function guardar() {
   errores.value = validar()
   if (errores.value.length) return
@@ -372,7 +460,7 @@ function guardar() {
     precio: form.conOpciones ? null : form.precio,
     opciones: form.conOpciones ? form.opciones : [],
     vaACocina: form.vaACocina,
-    activo: form.activo
+    ocultoEn: calcularOcultoEn()
   }
   const ok = intentar(() => form.id ? actualizarProducto(form.id, datos) : crearProducto(datos))
   if (ok) cerrarEditor()
@@ -398,7 +486,7 @@ function eliminar() {
 }
 .gp {
   background: #ffffff; border-radius: 22px; width: 100%; max-width: 720px;
-  max-height: calc(100vh - 48px); overflow-y: auto;
+  max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto;
   padding: 22px; display: flex; flex-direction: column; gap: 14px;
   box-shadow: 0 24px 60px rgba(26,14,6,0.25);
 }
@@ -450,7 +538,55 @@ function eliminar() {
 }
 .gp__filtro--activo { border-color: #2c1a0e; background: #2c1a0e; color: #ffffff; }
 
+.gp__falla {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 24px 16px; border-radius: 14px; background: #fdf1f0; text-align: center;
+}
+.gp__falla-texto { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: #b3261e; max-width: 440px; }
+.gp__falla-btn {
+  height: 38px; padding: 0 18px; border-radius: 10px; border: none; cursor: pointer;
+  background: #2c1a0e; color: #ffffff; font-size: 14px; font-weight: 700;
+}
 .gp__vacio { margin: 0; padding: 28px 0; text-align: center; font-size: 14px; font-weight: 600; color: #a3948a; }
+
+/* Sucursal de la que se ve la disponibilidad */
+.gp-suc {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 8px 8px 14px; border-radius: 14px; background: #f4ede5;
+}
+.gp-suc__label {
+  font-size: 11.5px; font-weight: 800; color: #8a7362;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.gp-suc__opciones { display: flex; gap: 4px; flex-wrap: wrap; }
+.gp-suc__op {
+  height: 34px; padding: 0 14px; border: none; border-radius: 9px; cursor: pointer;
+  background: transparent; color: #8a7362; font-size: 13.5px; font-weight: 700;
+}
+.gp-suc__op--activa { background: #ffffff; color: #2c1a0e; box-shadow: 0 1px 3px rgba(44,26,14,0.12); }
+.gp-fila__donde { font-size: 12px; font-weight: 600; color: #2f7fc1; }
+
+/* Editor: en qué sucursales se vende */
+.gp-donde {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px; border-radius: 14px; border: 1px solid #efe6dc; background: #ffffff;
+}
+.gp-donde__titulo { font-size: 14.5px; font-weight: 700; color: #2c1a0e; }
+.gp-donde__ayuda { font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #8a7362; }
+.gp-donde__chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.gp-donde__chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 40px; padding: 0 14px 0 10px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid #e6dacd; background: #faf6f1; color: #a3948a;
+  font-size: 14px; font-weight: 700; text-decoration: line-through;
+}
+.gp-donde__chip--si { border-color: #2f8c4a; background: rgba(47,140,74,0.08); color: #24733b; text-decoration: none; }
+.gp-donde__marca {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800;
+  border: 1.5px solid currentColor;
+}
+.gp-donde__chip--si .gp-donde__marca { background: #2f8c4a; border-color: #2f8c4a; color: #ffffff; }
 
 /* Lista */
 .gp__lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

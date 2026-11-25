@@ -1,10 +1,25 @@
 <template>
   <div class="cocina">
     <header class="cocina__header">
-      <h1>Cocina</h1>
-      <span class="cocina__contador">
-        {{ pedidosCocina.length }} pedido{{ pedidosCocina.length !== 1 ? 's' : '' }}
-      </span>
+      <div class="cocina__titulos">
+        <h1>Cocina</h1>
+        <!-- Quien tiene varias sucursales elige cuál ver -->
+        <div v-if="sucursales.length > 1" class="cocina__sucursales">
+          <button
+            v-for="s in sucursales" :key="s.id"
+            class="cocina__sucursal" :class="{ 'cocina__sucursal--activa': s.id === sucursalId }"
+            @click="cambiarSucursal(s.id)"
+          >{{ s.nombre }}</button>
+        </div>
+        <span v-else class="cocina__sucursal-nombre">{{ sucursalActual?.nombre }}</span>
+      </div>
+      <div class="cocina__derecha">
+        <span class="cocina__contador">
+          {{ pedidosCocina.length }} pedido{{ pedidosCocina.length !== 1 ? 's' : '' }}
+        </span>
+        <button v-if="puedeVender" class="cocina__nav" @click="router.push('/pos')">Ir al POS</button>
+        <button v-else class="cocina__nav" @click="salir">Salir</button>
+      </div>
     </header>
 
     <div v-if="!pedidosCocina.length" class="cocina__vacio">
@@ -65,9 +80,29 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
-import { db } from '../../firebase.js'
-import { collection, onSnapshot, orderBy, query, doc, updateDoc } from 'firebase/firestore'
+import { useRouter } from 'vue-router'
+import { signOut } from 'firebase/auth'
+import { auth } from '../../firebase.js'
+import { onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore'
+import { useNegocio, limpiarSesion } from '../../composables/useNegocio.js'
 import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
+
+const router = useRouter()
+// Pedidos de la sucursal de esta tablet (ver composables/useNegocio.js)
+const { sucursales, sucursalId, sucursalActual, puedeVender, elegirSucursal, colSucursal, docSucursal } = useNegocio()
+
+function cambiarSucursal(id) {
+  if (id === sucursalId.value) return
+  elegirSucursal(id)
+  window.location.reload()
+}
+
+async function salir() {
+  try { await signOut(auth) } finally {
+    limpiarSesion()
+    router.replace('/login')
+  }
+}
 
 const pedidos = ref([])
 let unsubscribe = null
@@ -77,7 +112,7 @@ const ahora = ref(Date.now())
 let intervaloReloj = null
 
 onMounted(() => {
-  const q = query(collection(db, 'pedidos'), orderBy('fecha', 'asc'))
+  const q = query(colSucursal('pedidos'), orderBy('fecha', 'asc'))
   unsubscribe = onSnapshot(q, (snap) => {
     pedidos.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   })
@@ -150,7 +185,7 @@ function marcarListo(id) {
   })
   // Sin await: el ticket sale de la pantalla al instante y el cambio se
   // manda al servidor por detrás (si no hay internet, queda en cola).
-  updateDoc(doc(db, 'pedidos', id), { estado: 'listo', productos: productosLimpios })
+  updateDoc(docSucursal('pedidos', id), { estado: 'listo', productos: productosLimpios })
     .catch(e => console.error('No se pudo marcar como listo:', e))
 }
 
@@ -193,6 +228,20 @@ function onTouchEnd(id) {
   margin-bottom: 20px;
 }
 .cocina__header h1 { font-size: 24px; font-weight: 800; color: #2c1a0e; margin: 0; }
+.cocina__header { gap: 12px; flex-wrap: wrap; }
+.cocina__titulos { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.cocina__sucursal-nombre { font-size: 15px; font-weight: 700; color: #8a7362; }
+.cocina__sucursales { display: flex; gap: 4px; padding: 4px; background: #efe7de; border-radius: 12px; }
+.cocina__sucursal {
+  height: 34px; padding: 0 12px; border: none; border-radius: 9px; cursor: pointer;
+  background: transparent; color: #8a7362; font-size: 13.5px; font-weight: 700;
+}
+.cocina__sucursal--activa { background: #ffffff; color: #2c1a0e; box-shadow: 0 1px 3px rgba(44,26,14,0.12); }
+.cocina__derecha { display: flex; align-items: center; gap: 8px; }
+.cocina__nav {
+  height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid #f0e4d8; background: #2c1a0e; color: #ffffff; font-size: 13.5px; font-weight: 700;
+}
 .cocina__contador {
   font-size: 14px; font-weight: 700; color: #8a7362;
   background: white; border: 1.5px solid #f0e4d8; padding: 6px 14px; border-radius: 999px;

@@ -5,8 +5,8 @@
   </div>
 
   <div class="login-container">
-    <form class="login-card" @submit.prevent="iniciarSesion">
-      <h2>Acceso Administrativo</h2>
+    <form class="login-card" @submit.prevent="enviar">
+      <h2>{{ creando ? 'Crear cuenta' : 'Acceso Administrativo' }}</h2>
 
       <div class="field">
         <label>Correo</label>
@@ -15,13 +15,27 @@
 
       <div class="field">
         <label>Contraseña</label>
-        <input v-model="password" type="password" placeholder="••••••••" required />
+        <input
+          v-model="password" type="password" placeholder="••••••••" required
+          :autocomplete="creando ? 'new-password' : 'current-password'"
+        />
+      </div>
+
+      <div v-if="creando" class="field">
+        <label>Repite la contraseña</label>
+        <input v-model="password2" type="password" placeholder="••••••••" required autocomplete="new-password" />
       </div>
 
       <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
 
       <button type="submit" :disabled="cargando">
-        {{ cargando ? 'Verificando...' : 'Entrar al Panel' }}
+        {{ cargando ? 'Verificando...' : (creando ? 'Crear cuenta' : 'Entrar al Panel') }}
+      </button>
+
+      <!-- El personal nuevo crea su cuenta aquí y luego escribe el código
+           de acceso que le da el dueño -->
+      <button type="button" class="cambiar-modo" @click="creando = !creando; errorMsg = ''">
+        {{ creando ? 'Ya tengo cuenta, iniciar sesión' : '¿Eres personal nuevo? Crear cuenta' }}
       </button>
     </form>
   </div>
@@ -30,30 +44,51 @@
 
 <script setup>
 import { ref } from 'vue'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../../firebase'
 import { useRouter, useRoute } from 'vue-router'
 
 const email = ref('')
 const password = ref('')
+const password2 = ref('')
+const creando = ref(false)
 const errorMsg = ref('')
 const cargando = ref(false)
 const router = useRouter()
 const route = useRoute()
 
-async function iniciarSesion() {
+function destino() {
+  // Si llegamos a /login porque intentábamos entrar a una ruta protegida
+  // (ej. /cocina), el router dejó esa ruta en ?redirect=...
+  // El router decide después si hace falta configurar el acceso.
+  return typeof route.query.redirect === 'string' ? route.query.redirect : '/pos'
+}
+
+const MENSAJES = {
+  'auth/email-already-in-use': 'Ya existe una cuenta con ese correo. Inicia sesión.',
+  'auth/invalid-email': 'Ese correo no es válido.',
+  'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+  'auth/network-request-failed': 'Sin conexión. Revisa el internet e intenta de nuevo.'
+}
+
+async function enviar() {
   errorMsg.value = ''
+  if (creando.value && password.value !== password2.value) {
+    errorMsg.value = 'Las contraseñas no coinciden.'
+    return
+  }
   cargando.value = true
   try {
-    await signInWithEmailAndPassword(auth, email.value, password.value)
-    // Si llegamos a /login porque intentábamos entrar a una ruta
-    // protegida (ej. /cocina), el router nos dejó esa ruta guardada en
-    // ?redirect=... — la usamos para regresar ahí. Si no hay nada
-    // guardado (entraste a /login directo), vamos a /pos como antes.
-    const destino = typeof route.query.redirect === 'string' ? route.query.redirect : '/pos'
-    router.push(destino)
+    if (creando.value) {
+      await createUserWithEmailAndPassword(auth, email.value.trim(), password.value)
+    } else {
+      await signInWithEmailAndPassword(auth, email.value.trim(), password.value)
+    }
+    router.push(destino())
   } catch (err) {
-    errorMsg.value = 'Correo o contraseña incorrectos.'
+    errorMsg.value = MENSAJES[err?.code] || (creando.value
+      ? 'No se pudo crear la cuenta. Intenta de nuevo.'
+      : 'Correo o contraseña incorrectos.')
   } finally {
     cargando.value = false
   }
@@ -86,6 +121,18 @@ async function iniciarSesion() {
   margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
+}
+.cambiar-modo {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #e8621a;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 .error-text {
   color: #cc0000;
