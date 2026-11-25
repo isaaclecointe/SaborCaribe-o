@@ -80,6 +80,8 @@ export function cargarSesion(user) {
   estado.value = 'cargando'
 
   cargaEnCurso = (async () => {
+    // Qué se estaba leyendo cuando algo falla (aparece en la consola)
+    let paso = 'usuarios/' + user.uid
     try {
       const puntero = await conTiempoLimite(getDoc(doc(db, 'usuarios', user.uid)))
       const nId = puntero.exists() ? puntero.data().negocioId : null
@@ -90,16 +92,18 @@ export function cargarSesion(user) {
       // Primero se confirma que sigue siendo miembro: si le quitaron el
       // acceso, Firebase no le dejaría leer el negocio y eso se vería
       // como un error en vez de "no tienes acceso".
+      paso = `negocios/${nId}/miembros/${user.uid}`
       const m = await conTiempoLimite(getDoc(doc(db, 'negocios', nId, 'miembros', user.uid)))
       if (!m.exists()) {
         estado.value = 'sinNegocio'
         return estado.value
       }
       negocioId.value = nId
+      paso = `negocios/${nId} (negocio, miembro o sucursales)`
       await conTiempoLimite(escucharNegocio(nId, user.uid))
       return estado.value
     } catch (e) {
-      console.error('No se pudo cargar la sesión del negocio:', e)
+      console.error(`No se pudo cargar la sesión del negocio. Leyendo: ${e?.lectura || paso} · usuario: ${user.email || user.uid}`, e)
       detenerEscuchas()
       errorSesion.value = e?.code === 'permission-denied'
         ? 'Firebase no dio permiso para leer tu acceso. Revisa las reglas de Firestore.'
@@ -124,7 +128,7 @@ function escucharNegocio(nId, userId) {
       listos[clave] = true
       if (listos.miembro && listos.sucursales && listos.negocio) resolve()
     }
-    const fallo = (e) => { detenerEscuchas(); reject(e) }
+    const fallo = (lectura) => (e) => { detenerEscuchas(); e.lectura = lectura; reject(e) }
 
     unsubs.push(onSnapshot(doc(db, 'negocios', nId, 'miembros', userId), (snap) => {
       if (!snap.exists()) {
@@ -138,19 +142,19 @@ function escucharNegocio(nId, userId) {
       miembro.value = { id: snap.id, ...snap.data() }
       if (estado.value === 'cargando' || estado.value === 'sinNegocio') estado.value = 'listo'
       avisarListo('miembro')
-    }, fallo))
+    }, fallo(`negocios/${nId}/miembros/${userId}`)))
 
     unsubs.push(onSnapshot(doc(db, 'negocios', nId), (snap) => {
       negocio.value = snap.exists() ? { id: snap.id, ...snap.data() } : null
       avisarListo('negocio')
-    }, fallo))
+    }, fallo(`negocios/${nId}`)))
 
     unsubs.push(onSnapshot(collection(db, 'negocios', nId, 'sucursales'), (snap) => {
       todasLasSucursales.value = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || String(a.nombre).localeCompare(b.nombre))
       avisarListo('sucursales')
-    }, fallo))
+    }, fallo(`negocios/${nId}/sucursales`)))
   })
 }
 

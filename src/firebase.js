@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager
+  persistentSingleTabManager
 } from 'firebase/firestore'
 import { getAuth } from "firebase/auth";
 
@@ -22,9 +22,18 @@ const app = initializeApp(firebaseConfig);
 // tablet (en su almacenamiento del navegador) y se mandan al servidor en
 // cuanto hay internet. Si el WiFi se cae y además la página se recarga,
 // los pedidos en cola NO se pierden: se envían solos cuando vuelve la
-// conexión. persistentMultipleTabManager permite tener el POS abierto en
-// más de una pestaña sin que la caché choque.
+// conexión.
+//
+// Una sola pestaña maneja la caché (SingleTab). Antes era "multi-pestaña":
+// las pestañas se coordinaban entre sí y una hacía el trabajo de todas.
+// En el iPad, Safari congela las pestañas de fondo, y si la congelada era
+// la que coordinaba, las demás se quedaban esperando para siempre (el
+// "Verificando..." que no avanzaba). Además, al cambiar de cuenta, una
+// pestaña vieja podía pedir datos con el usuario anterior ("Missing or
+// insufficient permissions"). Ahora cada pestaña es independiente: si ya
+// hay otra pestaña del POS abierta, esta funciona igual, solo que sin
+// caché propia (necesita internet).
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
 })
 export const auth = getAuth(app)
