@@ -42,6 +42,18 @@ const miembro = ref(null)
 const todasLasSucursales = ref([])
 const sucursalElegida = ref(null)
 
+// Si Firebase no responde (sin internet, un bloqueador de anuncios, o el
+// almacenamiento del navegador trabado), la carga no se queda esperando
+// para siempre: a los 12 s se avisa en pantalla con botón para reintentar.
+const ESPERA_MAXIMA_MS = 12000
+function conTiempoLimite(promesa) {
+  let t
+  const limite = new Promise((_, rechazar) => {
+    t = setTimeout(() => rechazar(Object.assign(new Error('sin respuesta'), { code: 'tiempo-agotado' })), ESPERA_MAXIMA_MS)
+  })
+  return Promise.race([promesa, limite]).finally(() => clearTimeout(t))
+}
+
 let cargaEnCurso = null
 let cargaDeUid = null
 let unsubs = []
@@ -69,7 +81,7 @@ export function cargarSesion(user) {
 
   cargaEnCurso = (async () => {
     try {
-      const puntero = await getDoc(doc(db, 'usuarios', user.uid))
+      const puntero = await conTiempoLimite(getDoc(doc(db, 'usuarios', user.uid)))
       const nId = puntero.exists() ? puntero.data().negocioId : null
       if (!nId) {
         estado.value = 'sinNegocio'
@@ -78,19 +90,22 @@ export function cargarSesion(user) {
       // Primero se confirma que sigue siendo miembro: si le quitaron el
       // acceso, Firebase no le dejaría leer el negocio y eso se vería
       // como un error en vez de "no tienes acceso".
-      const m = await getDoc(doc(db, 'negocios', nId, 'miembros', user.uid))
+      const m = await conTiempoLimite(getDoc(doc(db, 'negocios', nId, 'miembros', user.uid)))
       if (!m.exists()) {
         estado.value = 'sinNegocio'
         return estado.value
       }
       negocioId.value = nId
-      await escucharNegocio(nId, user.uid)
+      await conTiempoLimite(escucharNegocio(nId, user.uid))
       return estado.value
     } catch (e) {
       console.error('No se pudo cargar la sesión del negocio:', e)
+      detenerEscuchas()
       errorSesion.value = e?.code === 'permission-denied'
         ? 'Firebase no dio permiso para leer tu acceso. Revisa las reglas de Firestore.'
-        : 'No se pudo cargar tu acceso. Revisa la conexión e intenta de nuevo.'
+        : e?.code === 'tiempo-agotado'
+          ? 'El servidor no respondió. Revisa el internet y, si tienes un bloqueador de anuncios, desactívalo para esta página.'
+          : 'No se pudo cargar tu acceso. Revisa la conexión e intenta de nuevo.'
       estado.value = 'error'
       // Se permite reintentar en la próxima navegación
       cargaDeUid = null

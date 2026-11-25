@@ -84,7 +84,9 @@ async function enviar() {
     } else {
       await signInWithEmailAndPassword(auth, email.value.trim(), password.value)
     }
-    router.push(destino())
+    // Se espera a que cargue el POS: así "Verificando..." se queda hasta
+    // que de verdad entra (o hasta que aparece un aviso)
+    await router.push(destino())
   } catch (err) {
     errorMsg.value = MENSAJES[err?.code] || (creando.value
       ? 'No se pudo crear la cuenta. Intenta de nuevo.'
