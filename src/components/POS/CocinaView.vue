@@ -22,6 +22,10 @@
       </div>
     </header>
 
+    <p v-if="!usaCocina" class="cocina__aviso">
+      {{ sucursalActual?.nombre }} está configurada sin pantalla de cocina: los pedidos se marcan listos desde caja.
+    </p>
+
     <div v-if="!pedidosCocina.length" class="cocina__vacio">
       <p>No hay pedidos pendientes 🎉</p>
     </div>
@@ -89,7 +93,7 @@ import { vaACocina, pedidoNecesitaCocina } from '../../utils/cocina.js'
 
 const router = useRouter()
 // Pedidos de la sucursal de esta tablet (ver composables/useNegocio.js)
-const { sucursales, sucursalId, sucursalActual, puedeVender, elegirSucursal, colSucursal, docSucursal } = useNegocio()
+const { sucursales, sucursalId, sucursalActual, usaCocina, puedeVender, elegirSucursal, colSucursal, docSucursal } = useNegocio()
 
 function cambiarSucursal(id) {
   if (id === sucursalId.value) return
@@ -238,6 +242,10 @@ function onTouchEnd(id) {
 }
 .cocina__sucursal--activa { background: #ffffff; color: #2c1a0e; box-shadow: 0 1px 3px rgba(44,26,14,0.12); }
 .cocina__derecha { display: flex; align-items: center; gap: 8px; }
+.cocina__aviso {
+  margin: 0 0 16px; padding: 12px 16px; border-radius: 12px;
+  background: #fdf3e1; color: #8a5a00; font-size: 14px; font-weight: 600;
+}
 .cocina__nav {
   height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
   border: 1.5px solid #f0e4d8; background: #2c1a0e; color: #ffffff; font-size: 13.5px; font-weight: 700;

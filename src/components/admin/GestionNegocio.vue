@@ -113,6 +113,17 @@
                 <span class="gn-fila__nombre">{{ s.nombre }}</span>
                 <span class="gn-fila__detalle">{{ personasEn(s.id) }}</span>
               </div>
+              <!-- Sin pantalla de cocina: caja marca los pedidos listos directo -->
+              <div class="gn-cocina">
+                <span class="gn-cocina__texto">Pantalla de cocina</span>
+                <button
+                  type="button"
+                  class="gn-switch" :class="{ 'gn-switch--on': sucursalUsaCocina(s) }"
+                  role="switch" :aria-checked="sucursalUsaCocina(s)"
+                  :aria-label="`Pantalla de cocina en ${s.nombre}`"
+                  @click="alternarCocina(s)"
+                ><span class="gn-switch__bola"></span></button>
+              </div>
               <button class="gn-mini" @click="editando = s.id; nombreEditado = s.nombre">Cambiar nombre</button>
             </template>
           </div>
@@ -126,6 +137,13 @@
           </div>
           <p class="gn-nota">Usa el mismo menú del negocio. Tendrá sus propios turnos, pedidos y numeración.</p>
         </section>
+
+        <section class="gn-ayuda">
+          <p class="gn-ayuda__texto">
+            <strong class="gn-ayuda__fuerte">Pantalla de cocina:</strong> apágala en las sucursales que trabajan con
+            una sola pantalla. Ahí los pedidos se marcan como listos desde caja, sin esperar a cocina.
+          </p>
+        </section>
       </template>
 
     </div>
@@ -136,7 +154,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { doc, onSnapshot, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase.js'
-import { useNegocio, ROLES } from '../../composables/useNegocio.js'
+import { useNegocio, ROLES, sucursalUsaCocina } from '../../composables/useNegocio.js'
 import {
   crearInvitacion, formatoCodigo, invitacionesPendientesQuery, slug
 } from '../../utils/configuracionNegocio.js'
@@ -252,6 +270,11 @@ function renombrar(s) {
   if (!nombre) return
   editando.value = null
   updateDoc(docNegocio('sucursales', s.id), { nombre }).catch(falla('No se pudo cambiar el nombre'))
+}
+
+function alternarCocina(s) {
+  updateDoc(docNegocio('sucursales', s.id), { usaCocina: !sucursalUsaCocina(s) })
+    .catch(falla('No se pudo cambiar la pantalla de cocina'))
 }
 
 function agregarSucursal() {
@@ -381,10 +404,27 @@ function agregarSucursal() {
 }
 .gn-input:focus { border-color: #e8621a; }
 .gn-nueva { display: flex; gap: 8px; }
+
+.gn-cocina { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.gn-cocina__texto { font-size: 12.5px; font-weight: 700; color: #8a7362; }
+.gn-switch {
+  position: relative; width: 46px; height: 28px; border-radius: 999px; border: none; cursor: pointer;
+  background: #e6dacd; transition: background 0.15s; flex-shrink: 0; padding: 0;
+}
+.gn-switch--on { background: #2f8c4a; }
+.gn-switch__bola {
+  position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+  background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.15s;
+}
+.gn-switch--on .gn-switch__bola { transform: translateX(18px); }
+.gn-ayuda { padding: 12px 14px; border-radius: 12px; background: #faf6f1; }
+.gn-ayuda__texto { margin: 0; font-size: 12.5px; font-weight: 500; line-height: 1.5; color: #8a7362; }
+.gn-ayuda__fuerte { font-size: 12.5px; font-weight: 700; color: #6b5444; }
 .gn-nota { margin: 0; font-size: 12.5px; font-weight: 500; color: #8a7362; }
 
 @media (max-width: 560px) {
   .gn { padding: 16px; }
   .gn-roles { grid-template-columns: 1fr; }
+  .gn-cocina__texto { display: none; }
 }
 </style>

@@ -213,6 +213,14 @@ const sucursalId = computed(() => {
 
 const sucursalActual = computed(() => sucursales.value.find(s => s.id === sucursalId.value) || null)
 
+// ¿Esta sucursal tiene pantalla de cocina? Se configura en "Sucursales y
+// usuarios". Si no la tiene, caja marca los pedidos como listos directo.
+// Las sucursales que no lo dicen (las de antes) sí usan cocina.
+export function sucursalUsaCocina(sucursal) {
+  return sucursal?.usaCocina !== false
+}
+const usaCocina = computed(() => sucursalUsaCocina(sucursalActual.value))
+
 export function elegirSucursal(id) {
   sucursalElegida.value = id
   try { localStorage.setItem(claveDispositivo(), id) } catch { /* sin almacenamiento */ }
@@ -250,7 +258,7 @@ export function useNegocio() {
     estado, errorSesion, uid, email,
     negocioId, negocio, miembro, rol,
     esDueno, puedeGestionar, puedeVender,
-    sucursales, todasLasSucursales, sucursalId, sucursalActual,
+    sucursales, todasLasSucursales, sucursalId, sucursalActual, usaCocina,
     elegirSucursal,
     colNegocio, docNegocio, colSucursal, docSucursal
   }

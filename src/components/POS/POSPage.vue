@@ -1136,7 +1136,7 @@ const turnoActual = ref(null)
 // Dónde se lee y escribe (colSucursal/docSucursal) y qué puede hacer
 // esta persona (según su rol). Ver composables/useNegocio.js
 const {
-  negocio, negocioId, sucursalId, sucursalActual, sucursales,
+  negocio, negocioId, sucursalId, sucursalActual, sucursales, usaCocina,
   esDueno, puedeGestionar, elegirSucursal, colSucursal, docSucursal
 } = useNegocio()
 const modalNegocio = ref(false)
@@ -1633,7 +1633,8 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
     const claveLinea = p => `${p.nombre}||${p.opcion || ''}`
     let productosParaGuardar = productos
     let hayAlgoQuePrepararNuevo = false
-    if (estadoActual === 'listo' && productosAntes) {
+    // (Sin pantalla de cocina no hay nada que marcar: el pedido sigue "listo")
+    if (usaCocina.value && estadoActual === 'listo' && productosAntes) {
       const cantidadesAntes = {}
       productosAntes.forEach(p => {
         const k = claveLinea(p)
@@ -2097,8 +2098,10 @@ async function confirmarDivision() {
 // ¿El pedido tiene algo que cocina tiene que preparar? (no solo
 // bebidas/postres). Si un producto no trae categoría (pedidos viejos),
 // lo tratamos como de cocina por seguridad.
+// En una sucursal sin pantalla de cocina, nada "espera a cocina": caja
+// marca el pedido como listo directamente.
 function necesitaCocina(pedido) {
-  return pedidoNecesitaCocina(pedido)
+  return usaCocina.value && pedidoNecesitaCocina(pedido)
 }
 
 const pedidoEnCocina = ref(null)   // pedido del aviso "todavía en preparación"
