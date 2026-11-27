@@ -674,6 +674,12 @@
 
       <!-- Columna productos -->
       <div class="dividir__col">
+        <!-- Cobros de antes que no dicen qué productos se pagaron -->
+        <p v-if="pagadoSinDetalle > 0" class="dividir__aviso">
+          Este pedido ya tenía <strong class="dividir__aviso-fuerte">Q{{ pagadoSinDetalle }}</strong> pagado.
+          Algunos productos de la lista ya están pagados: cobra solo lo que falta,
+          <strong class="dividir__aviso-fuerte">Q{{ faltaPorCobrar }}</strong>.
+        </p>
         <div class="dividir__col-head">
           <span class="dividir__label">Por cobrar</span>
           <div class="dividir__acciones-mini">
@@ -1660,6 +1666,9 @@ async function persistirPedido(estado, tipoOrden, nombre, datosPago = null) {
       montoPagado: nuevoPagado,
       pagado: nuevoPagado >= totalOrden.value,
       metodoPago: datosPago?.metodo || pedidoEditando.value.metodoPago || null,
+      unidadesPagadas: datosPago
+        ? [...nombresYaPagados(pedidoEditando.value), ...(datosPago.unidades || [])]
+        : nombresYaPagados(pedidoEditando.value),
       pagos: datosPago?.pagos
   ? [...(pedidoEditando.value.pagos || []), ...datosPago.pagos]
   : (pedidoEditando.value.pagos || null),
@@ -1705,8 +1714,10 @@ totalTarjeta: datosPago
       productos,
       total: totalOrden.value,
       estado,
-      pagado: !!datosPago,
-      montoPagado: datosPago ? totalOrden.value : 0,
+      // Con "Dividir cuenta" se puede guardar con parte pendiente
+      pagado: datosPago ? (datosPago.monto || 0) >= totalOrden.value : false,
+      montoPagado: datosPago ? (datosPago.monto || 0) : 0,
+      unidadesPagadas: datosPago?.unidades || [],
       metodoPago: datosPago?.metodo || null,
       efectivoRecibido: datosPago?.recibido || null,
       cambio: datosPago?.cambio || null,
@@ -1804,7 +1815,10 @@ const itemsDivididos = computed(() => {
   orden.value.forEach((item, idxItem) => {
     for (let i = 0; i < item.cantidad; i++) {
       lista.push({
-        uid: `${item.key}__${i}`,
+        // El número de línea va en el uid: si dos líneas comparten producto
+        // (ej. una quesadilla con nota y otra sin), sus unidades no se
+        // confunden entre sí
+        uid: `${idxItem}:${item.key}__${i}`,
         nombre: item.nombre,
         precio: item.precio,
         idxItem
@@ -1812,6 +1826,39 @@ const itemsDivididos = computed(() => {
     }
   })
   return lista
+})
+
+// ── Qué unidades del pedido ya se pagaron antes ──
+// Cada cobro guarda los nombres de lo que se pagó (unidadesPagadas). Los
+// pedidos de antes de este cambio solo lo tenían en los pagos divididos.
+function nombresYaPagados(pedido) {
+  if (!pedido) return []
+  if (Array.isArray(pedido.unidadesPagadas)) return pedido.unidadesPagadas
+  return (pedido.pagos || []).flatMap(p => p.items || [])
+}
+
+// uids de las unidades que ya estaban pagadas (por nombre, una por una)
+function uidsYaPagados() {
+  const pendientes = {}
+  nombresYaPagados(pedidoEditando.value).forEach(n => { pendientes[n] = (pendientes[n] || 0) + 1 })
+  const pagados = new Set()
+  itemsDivididos.value.forEach(item => {
+    if (pendientes[item.nombre] > 0) {
+      pagados.add(item.uid)
+      pendientes[item.nombre]--
+    }
+  })
+  return pagados
+}
+
+// Lo que ya se pagó pero sin saber qué productos (cobros de antes de este
+// cambio). Se avisa en "Dividir cuenta" para no cobrarlo otra vez.
+const pagadoSinDetalle = computed(() => {
+  if (!modoDividir.value || !pedidoEditando.value) return 0
+  const yaPagado = pedidoEditando.value.montoPagado || 0
+  const ya = uidsYaPagados()
+  const conDetalle = itemsDivididos.value.filter(i => ya.has(i.uid)).reduce((s, i) => s + i.precio, 0)
+  return Math.max(0, yaPagado - conDetalle)
 })
 
 // Items que aún no se han pagado
@@ -1930,7 +1977,13 @@ async function confirmarCobro() {
     recibido: metodoPago.value === 'efectivo' ? recibidoEfectivo : null,
     cambio: metodoPago.value === 'efectivo' ? recibidoEfectivo - montoACobrar.value : null,
     totalEfectivo: metodoPago.value === 'efectivo' ? montoACobrar.value : 0,
-    totalTarjeta: metodoPago.value === 'tarjeta' ? montoACobrar.value : 0
+    totalTarjeta: metodoPago.value === 'tarjeta' ? montoACobrar.value : 0,
+    // Se paga todo lo que faltaba: se anotan esas unidades para que, si
+    // después se agrega algo y se divide la cuenta, no se cobren otra vez
+    unidades: (() => {
+      const ya = uidsYaPagados()
+      return itemsDivididos.value.filter(i => !ya.has(i.uid)).map(i => i.nombre)
+    })()
   }
  // Restaura el id por si algo lo borró
   if (cobroPedidoId.value) pedidoEditandoId.value = cobroPedidoId.value
@@ -1956,23 +2009,9 @@ function abrirDividir() {
   efectivoParcial.value = null
   metodoPago.value = 'efectivo'
 
-   // Reconstruye qué unidades ya fueron pagadas en rondas anteriores
-  const pagosPrevios = pedidoEditando.value?.pagos || []
-  const pendientePorNombre = {}
-  pagosPrevios.forEach(p => {
-    p.items.forEach(nombre => {
-      pendientePorNombre[nombre] = (pendientePorNombre[nombre] || 0) + 1
-    })
-  })
-
-  const pagados = new Set()
-  itemsDivididos.value.forEach(item => {
-    if (pendientePorNombre[item.nombre] > 0) {
-      pagados.add(item.uid)
-      pendientePorNombre[item.nombre]--
-    }
-  })
-  itemsPagados.value = pagados
+  // Lo que ya se pagó antes (otro cobro o pagos divididos anteriores)
+  // no vuelve a aparecer en "Por cobrar"
+  itemsPagados.value = uidsYaPagados()
 }
 
 
@@ -1999,6 +2038,12 @@ function limpiarSeleccion() {
 
 // Registra un pago parcial (no toca Firebase todavía)
 function cobrarParcial() {
+  // Nunca cobrar más de lo que falta (protege contra productos que ya
+  // se habían pagado antes y aparecen otra vez)
+  if (totalSeleccionado.value > faltaPorCobrar.value) {
+    mostrarAviso(`Lo seleccionado (Q${totalSeleccionado.value}) es más de lo que falta por cobrar (Q${faltaPorCobrar.value}). Revisa los productos.`)
+    return
+  }
   const seleccionados = itemsDivididos.value
     .filter(i => itemsSeleccionados.value.has(i.uid))
   // Campo vacío = pagó exacto
@@ -2014,6 +2059,7 @@ function cobrarParcial() {
       ? recibidoParcial - totalSeleccionado.value
       : null,
     items: seleccionados.map(i => i.nombre),
+    uids: seleccionados.map(i => i.uid),   // solo en pantalla, no se guarda
     hora: new Date().toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })
   })
 
@@ -2031,12 +2077,10 @@ function cobrarParcial() {
 function quitarPago(index) {
   const pago = pagosRealizados.value[index]
   // Devuelve los items al pool disponible
+  // Solo esas unidades exactas (antes se devolvían todas las del mismo
+  // nombre, y una quesadilla ya pagada por otra persona volvía a aparecer)
   const nuevosPagados = new Set(itemsPagados.value)
-  itemsDivididos.value.forEach(i => {
-    if (pago.items.includes(i.nombre) && nuevosPagados.has(i.uid)) {
-      nuevosPagados.delete(i.uid)
-    }
-  })
+  ;(pago.uids || []).forEach(uid => nuevosPagados.delete(uid))
   itemsPagados.value = nuevosPagados
   pagosRealizados.value.splice(index, 1)
 }
@@ -2061,9 +2105,10 @@ async function confirmarDivision() {
     monto: totalCobradoParcial.value,
     recibido: null,
     cambio: null,
-    pagos: [...pagosRealizados.value],
+    pagos: pagosRealizados.value.map(({ uids, ...pago }) => pago),
     totalEfectivo: totalEf,
-    totalTarjeta: totalTar
+    totalTarjeta: totalTar,
+    unidades: pagosRealizados.value.flatMap(p => p.items)
   }
 
   if (cobroPedidoId.value) pedidoEditandoId.value = cobroPedidoId.value
@@ -3854,6 +3899,11 @@ onUnmounted(() => {
   display: flex; flex-direction: column; gap: 12px;
 }
 .dividir__col--cobro { background: #faf6f1; border-left: 1px solid #f2ebe3; }
+.dividir__aviso {
+  margin: 0; padding: 10px 12px; border-radius: 10px; background: #fdf3e1;
+  font-size: 13px; font-weight: 600; line-height: 1.45; color: #8a5a00;
+}
+.dividir__aviso-fuerte { font-size: 13px; font-weight: 800; color: #6b4500; }
 
 .dividir__col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dividir__label {
